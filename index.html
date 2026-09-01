@@ -618,6 +618,10 @@
     typeof window.storage !== 'undefined' &&
     window.storage !== null;
 
+  // PASTE your deployed Google Apps Script Web App URL here (shared backend for GitHub deployment).
+  const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzkfY8LRSrbi7gsWXYjXYnu_h5C31uPJibO2Nm7sDuNtF493GhTuI8JAj4uAVL5gUvh/exec';
+  const hasSheetBackend = !hasCloudStorage && !!GOOGLE_SHEET_API_URL;
+
 
   async function storageGetRaw(key) {
 
@@ -626,6 +630,17 @@
         const r = await window.storage.get(key, false);
         return r ? r.value : null;
       } catch (e) {
+        return null;
+      }
+    }
+
+    if (hasSheetBackend) {
+      try {
+        const res = await fetch(GOOGLE_SHEET_API_URL + '?key=' + encodeURIComponent(key));
+        const json = await res.json();
+        return json && json.value !== undefined ? json.value : null;
+      } catch (e) {
+        console.error('Sheet backend get failed', e);
         return null;
       }
     }
@@ -642,6 +657,14 @@
 
     if (hasCloudStorage) {
       await window.storage.set(key, value, false);
+      return;
+    }
+
+    if (hasSheetBackend) {
+      await fetch(GOOGLE_SHEET_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'set', key, value })
+      });
       return;
     }
 
@@ -700,6 +723,14 @@
         'day:' + dateKey,
         false
       );
+      return;
+    }
+
+    if (hasSheetBackend) {
+      await fetch(GOOGLE_SHEET_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'delete', key: 'day:' + dateKey })
+      });
       return;
     }
 
@@ -1828,7 +1859,9 @@
               document.createTextNode(
                 hasCloudStorage
                   ? 'Synced to Claude cloud storage'
-                  : 'Saved in this browser only'
+                  : hasSheetBackend
+                    ? 'Synced to shared Google Sheet'
+                    : 'Saved in this browser only'
               )
             ]
           ),
