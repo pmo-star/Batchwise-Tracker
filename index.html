@@ -622,6 +622,11 @@
   const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzkfY8LRSrbi7gsWXYjXYnu_h5C31uPJibO2Nm7sDuNtF493GhTuI8JAj4uAVL5gUvh/exec';
   const hasSheetBackend = !hasCloudStorage && !!GOOGLE_SHEET_API_URL;
 
+  // in-memory cache so switching department tabs / re-rendering doesn't
+  // re-fetch the same key from the (slow) Google Sheet backend every time.
+  // Cache is invalidated automatically whenever that key is written or deleted.
+  const __sheetCache = {};
+
 
   async function storageGetRaw(key) {
 
@@ -635,10 +640,15 @@
     }
 
     if (hasSheetBackend) {
+      if (Object.prototype.hasOwnProperty.call(__sheetCache, key)) {
+        return __sheetCache[key];
+      }
       try {
         const res = await fetch(GOOGLE_SHEET_API_URL + '?key=' + encodeURIComponent(key));
         const json = await res.json();
-        return json && json.value !== undefined ? json.value : null;
+        const val = json && json.value !== undefined ? json.value : null;
+        __sheetCache[key] = val;
+        return val;
       } catch (e) {
         console.error('Sheet backend get failed', e);
         return null;
@@ -661,6 +671,7 @@
     }
 
     if (hasSheetBackend) {
+      __sheetCache[key] = value;
       await fetch(GOOGLE_SHEET_API_URL, {
         method: 'POST',
         body: JSON.stringify({ action: 'set', key, value })
@@ -727,6 +738,7 @@
     }
 
     if (hasSheetBackend) {
+      delete __sheetCache['day:' + dateKey];
       await fetch(GOOGLE_SHEET_API_URL, {
         method: 'POST',
         body: JSON.stringify({ action: 'delete', key: 'day:' + dateKey })
