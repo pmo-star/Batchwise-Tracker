@@ -1,0 +1,3981 @@
+<div id="app-root"></div>
+
+<style>
+  #app-root {
+    --bg: #F5F2EC;
+    --surface: #FFFFFF;
+    --ink: #211D18;
+    --ink-soft: #6B6255;
+    --line: #E4DDCF;
+    --steel: #2B3038;
+    --steel-soft: #3C434E;
+    --copper: #BE6A34;
+    --copper-soft: #F1DAC4;
+    --forge: #3F6E52;
+    --forge-soft: #DCE9DF;
+    --ember: #C9932F;
+    --ember-soft: #F3E5C2;
+    --radius: 10px;
+
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    min-height: 100vh;
+    display: flex;
+    font-size: 14px;
+  }
+
+  #app-root * {
+    box-sizing: border-box;
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace;
+  }
+
+  .sidebar {
+    width: 250px;
+    background: var(--steel);
+    color: #EDEAE3;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .sidebar-header {
+    padding: 22px 20px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .sidebar-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    margin: 0;
+  }
+
+  .sidebar-sub {
+    font-size: 11.5px;
+    color: #9FA6AE;
+    margin-top: 3px;
+  }
+
+  .upload-zone {
+    margin: 16px 16px 8px;
+    padding: 16px 12px;
+    border: 1.5px dashed rgba(255,255,255,0.25);
+    border-radius: var(--radius);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+
+  .upload-zone:hover,
+  .upload-zone.dragover {
+    border-color: var(--copper);
+    background: rgba(190,106,52,0.12);
+  }
+
+  .upload-zone svg {
+    opacity: 0.7;
+    margin-bottom: 6px;
+  }
+
+  .upload-zone-text {
+    font-size: 12.5px;
+    color: #C7CCD1;
+    line-height: 1.4;
+  }
+
+  .upload-zone input {
+    display: none;
+  }
+
+  .reset-btn {
+    margin: 4px 16px 8px;
+    padding: 8px 10px;
+    text-align: center;
+    font-size: 11.5px;
+    color: #C7897C;
+    border: 1px solid rgba(200,100,90,0.35);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background .12s;
+  }
+
+  .reset-btn:hover {
+    background: rgba(200,80,70,0.15);
+    color: #E0A79B;
+  }
+
+  .date-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 10px 16px;
+  }
+
+  .date-list-label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #7C838B;
+    padding: 12px 10px 6px;
+  }
+
+  .date-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 2px;
+    color: #D7DADC;
+    font-size: 13px;
+  }
+
+  .date-item:hover {
+    background: rgba(255,255,255,0.06);
+  }
+
+  .date-item.active {
+    background: var(--copper);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .date-item .count {
+    font-size: 11px;
+    color: inherit;
+    opacity: 0.75;
+  }
+
+  .date-del {
+    opacity: 0;
+    font-size: 15px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 5px;
+    transition: opacity .12s, background .12s;
+  }
+
+  .date-item:hover .date-del {
+    opacity: 0.6;
+  }
+
+  .date-del:hover {
+    opacity: 1 !important;
+    background: rgba(255,255,255,0.15);
+  }
+
+  .date-item.active .date-del:hover {
+    background: rgba(255,255,255,0.25);
+  }
+
+  .main {
+    flex: 1;
+    min-width: 0;
+    padding: 26px 34px 60px;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .topbar h1 {
+    font-size: 20px;
+    margin: 0;
+  }
+
+  .topbar .status {
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+
+  .stat-row {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 26px;
+    flex-wrap: wrap;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    min-width: 140px;
+  }
+
+  .stat-card .label {
+    font-size: 11px;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  .stat-card .value {
+    font-size: 22px;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+
+  .stat-card.copper .value {
+    color: var(--copper);
+  }
+
+  .stat-card.forge .value {
+    color: var(--forge);
+  }
+
+  .stat-card.ember .value {
+    color: #A87A1E;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 90px 20px;
+    color: var(--ink-soft);
+  }
+
+  .empty-state h2 {
+    font-size: 17px;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+
+  .empty-state p {
+    font-size: 13px;
+    max-width: 360px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+
+  .wc-section {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    margin-bottom: 20px;
+  }
+
+  .wc-section h2 {
+    font-size: 15px;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .wc-section h2 .bar {
+    width: 4px;
+    height: 15px;
+    background: var(--copper);
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  .wc-section .wc-sub {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-bottom: 14px;
+  }
+
+  .group-section {
+    margin-bottom: 30px;
+  }
+
+  .group-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--steel);
+    margin: 0 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--steel);
+  }
+
+  .group-empty {
+    background: var(--surface);
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    color: var(--ink-soft);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  .dept-tab-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+
+  .dept-tab {
+    padding: 9px 18px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: background .12s, color .12s, border-color .12s;
+  }
+
+  .dept-tab:hover {
+    border-color: var(--copper);
+    color: var(--ink);
+  }
+
+  .dept-tab.active {
+    background: var(--steel);
+    border-color: var(--steel);
+    color: #fff;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .search-input {
+    flex: 1;
+    max-width: 320px;
+    padding: 9px 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--ink);
+  }
+
+  .search-input:focus {
+    outline: none;
+    border-color: var(--copper);
+  }
+
+  .export-btn {
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    background: var(--forge);
+    color: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .export-btn:hover {
+    opacity: 0.9;
+  }
+
+  .summary-section {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    margin-bottom: 22px;
+  }
+
+  .trend-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin: 0 0 12px;
+    color: var(--ink);
+  }
+
+  .summary-section table {
+    font-size: 12.5px;
+  }
+
+  .summary-section th {
+    background: var(--steel);
+    color: #EDEAE3;
+    padding: 7px 12px;
+    text-align: left;
+  }
+
+  .summary-section td {
+    padding: 6px 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  canvas {
+    max-height: 320px;
+  }
+
+  .table-wrap {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12.5px;
+  }
+
+  th {
+    position: sticky;
+    top: 0;
+    background: var(--steel);
+    color: #EDEAE3;
+    text-align: left;
+    padding: 8px 12px;
+    font-weight: 600;
+  }
+
+  td {
+    padding: 7px 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  td.num {
+    text-align: right;
+  }
+
+  tr:nth-child(even) td {
+    background: #FAF8F3;
+  }
+
+  .batch-code {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+  }
+
+  tr.flagged-row td {
+    background: #FBEAE6 !important;
+  }
+
+  .flag-badge {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #C0442C;
+    color: #fff;
+    margin-right: 4px;
+    white-space: nowrap;
+  }
+
+  .loading-msg {
+    text-align: center;
+    padding: 60px;
+    color: var(--ink-soft);
+    font-size: 13px;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 22px;
+    right: 22px;
+    background: var(--steel);
+    color: #fff;
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity .2s, transform .2s;
+    pointer-events: none;
+    z-index: 50;
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+
+<script>
+(function() {
+
+  const BUILD_TAG = '2026-09-01-date-fix-v3';
+
+  const root = document.getElementById('app-root');
+
+  let chartInstances = [];
+  let currentDateKey = null;
+  let currentDeptTab = 'CCP_MILL';
+  let searchTerm = '';
+
+  const DEPT_TABS = [
+    {
+      key: 'CCP_MILL',
+      label: 'CCP / MILL',
+      groups: ['CCP / MILL']
+    },
+    {
+      key: 'COIN',
+      label: 'COIN',
+      groups: ['COIN']
+    },
+    {
+      key: 'COIL',
+      label: 'COIL (CL01)',
+      groups: ['COIL (CL01)']
+    },
+    {
+      key: 'CUP',
+      label: 'CUP',
+      groups: ['CUP']
+    },
+    {
+      key: 'CASE',
+      label: 'CASE',
+      groups: ['CASE']
+    }
+  ];
+
+  function el(tag, attrs, children) {
+    const e = document.createElement(tag);
+
+    if (attrs) {
+      Object.entries(attrs).forEach(([k, v]) => {
+        if (k === 'class') {
+          e.className = v;
+        } else if (k === 'html') {
+          e.innerHTML = v;
+        } else {
+          e.setAttribute(k, v);
+        }
+      });
+    }
+
+    (children || []).forEach(c => e.appendChild(c));
+
+    return e;
+  }
+
+  function fmt(n, dec) {
+    if (
+      n === null ||
+      n === undefined ||
+      isNaN(n)
+    ) {
+      return '-';
+    }
+
+    return Number(n).toLocaleString('en-IN', {
+      maximumFractionDigits: dec || 0
+    });
+  }
+
+  function showToast(msg, isError) {
+
+    let t = document.getElementById('ccp-toast');
+
+    if (!t) {
+      t = el('div', {
+        id: 'ccp-toast',
+        class: 'toast'
+      });
+
+      document.body.appendChild(t);
+    }
+
+    t.textContent = msg;
+
+    t.style.background = isError
+      ? '#8A3324'
+      : '';
+
+    t.classList.add('show');
+
+    clearTimeout(t._timer);
+
+    t._timer = setTimeout(
+      () => t.classList.remove('show'),
+      isError ? 6000 : 5000
+    );
+  }
+
+
+  /* =========================================================
+     STORAGE
+  ========================================================= */
+
+  const hasCloudStorage =
+    typeof window.storage !== 'undefined' &&
+    window.storage !== null;
+
+
+  async function storageGetRaw(key) {
+
+    if (hasCloudStorage) {
+      try {
+        const r = await window.storage.get(key, false);
+        return r ? r.value : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  }
+
+
+  async function storageSetRaw(key, value) {
+
+    if (hasCloudStorage) {
+      await window.storage.set(key, value, false);
+      return;
+    }
+
+    localStorage.setItem(key, value);
+  }
+
+
+  async function getDateIndex() {
+
+    const raw = await storageGetRaw('date-index');
+
+    try {
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+
+  async function setDateIndex(list) {
+
+    await storageSetRaw(
+      'date-index',
+      JSON.stringify(list)
+    );
+  }
+
+
+  async function getDayData(dateKey) {
+
+    const raw = await storageGetRaw(
+      'day:' + dateKey
+    );
+
+    try {
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+
+  async function setDayData(dateKey, data) {
+
+    await storageSetRaw(
+      'day:' + dateKey,
+      JSON.stringify(data)
+    );
+  }
+
+
+  async function deleteDayData(dateKey) {
+
+    if (hasCloudStorage) {
+      await window.storage.delete(
+        'day:' + dateKey,
+        false
+      );
+      return;
+    }
+
+    localStorage.removeItem(
+      'day:' + dateKey
+    );
+  }
+
+
+  /* =========================================================
+     STORAGE LOCATION GROUPING
+  ========================================================= */
+
+  const GROUP_ORDER = [
+    'CCP / MILL',
+    'COIN',
+    'COIL (CL01)',
+    'CUP',
+    'CASE'
+  ];
+
+
+  function getGroupForRow(storageLocRaw, wcText) {
+
+    const loc =
+      (storageLocRaw || '')
+        .toString()
+        .toUpperCase();
+
+    if (
+      loc.includes('MILL') ||
+      loc.includes('CCP')
+    ) {
+      return 'CCP / MILL';
+    }
+
+    if (loc.includes('COIN')) {
+      return 'COIN';
+    }
+
+    if (
+      loc.includes('CL01') ||
+      loc.includes('COIL')
+    ) {
+      return 'COIL (CL01)';
+    }
+
+    if (loc.includes('CUP')) {
+      return 'CUP';
+    }
+
+    if (loc.includes('CASE')) {
+      return 'CASE';
+    }
+
+
+    const wc =
+      (wcText || '')
+        .toString()
+        .toUpperCase();
+
+
+    if (
+      wc.includes('MILLING') ||
+      wc.includes('CAST') ||
+      wc.includes('MELT') ||
+      wc.includes('HOLD')
+    ) {
+      return 'CCP / MILL';
+    }
+
+
+    if (
+      wc.includes('RIMMING') ||
+      wc.includes('POLISH') ||
+      wc.includes('MRV') ||
+      wc.includes('COIN') ||
+      wc.includes('SCHULER') ||
+      wc.includes('BAK ANN')
+    ) {
+      return 'COIN';
+    }
+
+
+    if (
+      wc.includes('SLIT') ||
+      wc.includes('PICKLING') ||
+      wc.includes('MAGADH')
+    ) {
+      return 'COIL (CL01)';
+    }
+
+
+    if (wc.includes('CUP')) {
+      return 'CUP';
+    }
+
+
+    if (wc.includes('CASE')) {
+      return 'CASE';
+    }
+
+
+    return 'Other';
+  }
+
+
+  /* =========================================================
+     COLUMN DETECTION
+  ========================================================= */
+
+  function findCol(
+    headers,
+    exactNames,
+    containsAll,
+    excludeContains
+  ) {
+
+    const lower = headers.map(
+      h =>
+        (h || '')
+          .toString()
+          .toLowerCase()
+          .trim()
+    );
+
+
+    if (exactNames) {
+
+      for (const name of exactNames) {
+
+        const idx =
+          lower.indexOf(
+            name.toLowerCase()
+          );
+
+        if (idx !== -1) {
+          return idx;
+        }
+      }
+    }
+
+
+    if (containsAll) {
+
+      for (
+        let i = 0;
+        i < lower.length;
+        i++
+      ) {
+
+        const h = lower[i];
+
+        const hasAll =
+          containsAll.every(
+            kw => h.includes(kw)
+          );
+
+        const hasExcluded =
+          (excludeContains || [])
+            .some(
+              kw => h.includes(kw)
+            );
+
+        if (
+          hasAll &&
+          !hasExcluded
+        ) {
+          return i;
+        }
+      }
+    }
+
+
+    return -1;
+  }
+
+
+  /* =========================================================
+     FIXED EXCEL DATE PARSER
+     
+     IMPORTANT:
+     We DO NOT use:
+       new Date(excelSerial)
+     
+     We DO NOT use:
+       getUTCDate()
+     
+     We DO NOT use:
+       getDate()
+     
+     We use SheetJS's parse_date_code so
+     Excel 08-23-2026 stays 23-Aug-2026.
+  ========================================================= */
+
+  function excelSerialToKey(serial) {
+
+    if (
+      typeof serial !== 'number' ||
+      !isFinite(serial)
+    ) {
+      return null;
+    }
+
+
+    try {
+
+      const parsed =
+        XLSX.SSF.parse_date_code(
+          serial,
+          {
+            date1904: false
+          }
+        );
+
+
+      if (
+        parsed &&
+        parsed.y &&
+        parsed.m &&
+        parsed.d
+      ) {
+
+        return (
+          String(parsed.y).padStart(4, '0') +
+          '-' +
+          String(parsed.m).padStart(2, '0') +
+          '-' +
+          String(parsed.d).padStart(2, '0')
+        );
+      }
+
+    } catch (e) {
+
+      console.warn(
+        'Excel date parse failed:',
+        serial,
+        e
+      );
+    }
+
+
+    return null;
+  }
+
+
+  function parseDateString(s) {
+
+    s = String(s || '').trim();
+
+    if (!s) {
+      return null;
+    }
+
+
+    /*
+      MM-DD-YYYY
+
+      Example:
+      08-23-2026
+      => 2026-08-23
+    */
+
+    let m =
+      s.match(
+        /^(\d{1,2})-(\d{1,2})-(\d{4})$/
+      );
+
+
+    if (m) {
+
+      const a = parseInt(m[1], 10);
+      const b = parseInt(m[2], 10);
+      const year = m[3];
+
+
+      /*
+        SAP export specified as MM-DD-YYYY.
+        Therefore:
+        first = month
+        second = day
+      */
+
+      const month = a;
+      const day = b;
+
+
+      if (
+        month >= 1 &&
+        month <= 12 &&
+        day >= 1 &&
+        day <= 31
+      ) {
+
+        return (
+          year + '-' +
+          String(month).padStart(2, '0') +
+          '-' +
+          String(day).padStart(2, '0')
+        );
+      }
+    }
+
+
+    /*
+      MM/DD/YYYY
+    */
+
+    m =
+      s.match(
+        /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
+      );
+
+
+    if (m) {
+
+      const month =
+        parseInt(m[1], 10);
+
+      const day =
+        parseInt(m[2], 10);
+
+      const year = m[3];
+
+
+      if (
+        month >= 1 &&
+        month <= 12 &&
+        day >= 1 &&
+        day <= 31
+      ) {
+
+        return (
+          year + '-' +
+          String(month).padStart(2, '0') +
+          '-' +
+          String(day).padStart(2, '0')
+        );
+      }
+    }
+
+
+    /*
+      YYYY-MM-DD
+    */
+
+    m =
+      s.match(
+        /^(\d{4})-(\d{1,2})-(\d{1,2})$/
+      );
+
+
+    if (m) {
+
+      const year = m[1];
+
+      const month =
+        parseInt(m[2], 10);
+
+      const day =
+        parseInt(m[3], 10);
+
+
+      if (
+        month >= 1 &&
+        month <= 12 &&
+        day >= 1 &&
+        day <= 31
+      ) {
+
+        return (
+          year + '-' +
+          String(month).padStart(2, '0') +
+          '-' +
+          String(day).padStart(2, '0')
+        );
+      }
+    }
+
+
+    return null;
+  }
+
+
+  function dateToKey(val) {
+
+    /*
+      CASE 1:
+      Excel serial number.
+
+      Example:
+      Excel 45892 etc.
+    */
+
+    if (
+      typeof val === 'number' &&
+      isFinite(val)
+    ) {
+
+      const key =
+        excelSerialToKey(val);
+
+      if (key) {
+        return key;
+      }
+    }
+
+
+    /*
+      CASE 2:
+      String date.
+    */
+
+    if (
+      typeof val === 'string'
+    ) {
+
+      const key =
+        parseDateString(val);
+
+      if (key) {
+        return key;
+      }
+
+
+      /*
+        If SAP gives a textual date
+        with month name, try controlled
+        parsing without relying on timezone
+        for common formats.
+      */
+
+      const cleaned =
+        val.trim();
+
+
+      const match =
+        cleaned.match(
+          /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})$/
+        );
+
+
+      if (match) {
+
+        const monthNames = {
+          jan: 1,
+          january: 1,
+          feb: 2,
+          february: 2,
+          mar: 3,
+          march: 3,
+          apr: 4,
+          april: 4,
+          may: 5,
+          jun: 6,
+          june: 6,
+          jul: 7,
+          july: 7,
+          aug: 8,
+          august: 8,
+          sep: 9,
+          september: 9,
+          oct: 10,
+          october: 10,
+          nov: 11,
+          november: 11,
+          dec: 12,
+          december: 12
+        };
+
+
+        const month =
+          monthNames[
+            match[1].toLowerCase()
+          ];
+
+        const day =
+          parseInt(match[2], 10);
+
+        const year =
+          parseInt(match[3], 10);
+
+
+        if (
+          month &&
+          day >= 1 &&
+          day <= 31
+        ) {
+
+          return (
+            String(year).padStart(4, '0') +
+            '-' +
+            String(month).padStart(2, '0') +
+            '-' +
+            String(day).padStart(2, '0')
+          );
+        }
+      }
+    }
+
+
+    /*
+      CASE 3:
+      Date object.
+
+      This is only a fallback.
+
+      IMPORTANT:
+      We intentionally use the local calendar
+      components here instead of converting
+      the Date through UTC.
+    */
+
+    if (
+      val instanceof Date &&
+      !isNaN(val.getTime())
+    ) {
+
+      return (
+        val.getFullYear() +
+        '-' +
+        String(
+          val.getMonth() + 1
+        ).padStart(2, '0') +
+        '-' +
+        String(
+          val.getDate()
+        ).padStart(2, '0')
+      );
+    }
+
+
+    return 'Unknown';
+  }
+
+
+  function keyToLabel(key) {
+
+    if (
+      !key ||
+      key === 'Unknown'
+    ) {
+      return 'Unknown Date';
+    }
+
+
+    const parts =
+      key.split('-');
+
+
+    if (parts.length !== 3) {
+      return key;
+    }
+
+
+    const y = parts[0];
+    const m = parts[1];
+    const d = parts[2];
+
+
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+
+
+    const monthIndex =
+      parseInt(m, 10) - 1;
+
+
+    if (
+      monthIndex < 0 ||
+      monthIndex > 11
+    ) {
+      return key;
+    }
+
+
+    return (
+      d +
+      ' ' +
+      months[monthIndex] +
+      ' ' +
+      y
+    );
+  }
+
+
+  /* =========================================================
+     WORKBOOK PARSER
+     
+     KEY CHANGE:
+     
+     cellDates: FALSE
+     
+     This keeps Excel dates as their original
+     serial values, allowing parse_date_code()
+     to decode them without timezone shifting.
+  ========================================================= */
+
+  function parseWorkbook(arrayBuffer) {
+
+    const wb =
+      XLSX.read(
+        new Uint8Array(arrayBuffer),
+        {
+          type: 'array',
+
+          /*
+            VERY IMPORTANT:
+            Do not let SheetJS convert Excel
+            serial dates into JavaScript Date.
+          */
+          cellDates: false,
+
+          cellNF: true
+        }
+      );
+
+
+    const sheet =
+      wb.Sheets[
+        wb.SheetNames[0]
+      ];
+
+
+    const rows =
+      XLSX.utils.sheet_to_json(
+        sheet,
+        {
+          header: 1,
+          raw: true,
+          defval: null
+        }
+      );
+
+
+    if (!rows.length) {
+      throw new Error(
+        'File is empty'
+      );
+    }
+
+
+    const headers =
+      rows[0];
+
+
+    const dataRows =
+      rows
+        .slice(1)
+        .filter(
+          r =>
+            r &&
+            r.length
+        );
+
+
+    const wcCol =
+      findCol(
+        headers,
+        ['Work Center Text'],
+        ['work', 'center'],
+        ['code']
+      );
+
+
+    const batchCol =
+      findCol(
+        headers,
+        ['Batch']
+      );
+
+
+    const qtyCol =
+      findCol(
+        headers,
+        null,
+        ['qty'],
+        ['unit']
+      );
+
+
+    const amtCol =
+      findCol(
+        headers,
+        [
+          'Total Amount (Direct + Indirect)'
+        ],
+        ['total', 'amount'],
+        ['rs/kg']
+      );
+
+
+    const timeCol =
+      findCol(
+        headers,
+        ['Batch Run Time (in Min)'],
+        ['run', 'time'],
+        ['day']
+      );
+
+
+    const prodCol =
+      findCol(
+        headers,
+        ['Material Code Description'],
+        ['description']
+      );
+
+
+    const dateCol =
+      findCol(
+        headers,
+        ['Posting Date'],
+        ['posting', 'date']
+      );
+
+
+    const locCol =
+      findCol(
+        headers,
+        ['Storage Location'],
+        ['storage', 'location']
+      );
+
+
+    if (
+      wcCol === -1 ||
+      batchCol === -1
+    ) {
+
+      throw new Error(
+        'Could not find Work Center / Batch columns in this file.'
+      );
+    }
+
+
+    if (dateCol === -1) {
+
+      throw new Error(
+        'Could not find Posting Date column in this file.'
+      );
+    }
+
+
+    const byDate = {};
+
+
+    dataRows.forEach(r => {
+
+      const rawDate =
+        r[dateCol];
+
+
+      const dateKey =
+        dateToKey(rawDate);
+
+
+      const wc =
+        (
+          r[wcCol] ||
+          'Unknown'
+        )
+          .toString()
+          .trim();
+
+
+      const batch =
+        (
+          r[batchCol] ||
+          'Unknown'
+        )
+          .toString()
+          .trim();
+
+
+      let qty = 0;
+
+
+      if (qtyCol !== -1) {
+
+        qty =
+          parseFloat(
+            (
+              r[qtyCol] ||
+              '0'
+            )
+              .toString()
+              .trim()
+          ) || 0;
+      }
+
+
+      const amt =
+        amtCol !== -1
+          ? (
+              parseFloat(
+                r[amtCol]
+              ) || 0
+            )
+          : 0;
+
+
+      const time =
+        timeCol !== -1
+          ? (
+              parseFloat(
+                r[timeCol]
+              ) || 0
+            )
+          : 0;
+
+
+      const product =
+        prodCol !== -1
+          ? (
+              r[prodCol] ||
+              ''
+            )
+              .toString()
+              .trim()
+          : '';
+
+
+      const group =
+        getGroupForRow(
+          locCol !== -1
+            ? r[locCol]
+            : null,
+          wc
+        );
+
+
+      if (!byDate[dateKey]) {
+        byDate[dateKey] = {};
+      }
+
+
+      if (!byDate[dateKey][wc]) {
+        byDate[dateKey][wc] = {};
+      }
+
+
+      if (
+        !byDate[dateKey][wc][batch]
+      ) {
+
+        byDate[dateKey][wc][batch] = {
+          qty: 0,
+          amt: 0,
+          time: 0,
+          products: [],
+          group
+        };
+      }
+
+
+      const d =
+        byDate[
+          dateKey
+        ][
+          wc
+        ][
+          batch
+        ];
+
+
+      d.qty += qty;
+      d.amt += amt;
+      d.time += time;
+      d.group = group;
+
+
+      if (
+        product &&
+        !d.products.includes(product)
+      ) {
+
+        d.products.push(
+          product
+        );
+      }
+
+    });
+
+
+    /*
+      Debug information:
+      Check browser console after upload.
+    */
+
+    console.log(
+      'Parsed Posting Dates:',
+      Object.keys(byDate)
+    );
+
+
+    return byDate;
+  }
+
+
+  /* =========================================================
+     UPLOAD
+  ========================================================= */
+
+  async function handleFile(file) {
+
+    showToast(
+      'Reading ' +
+      file.name +
+      ' …'
+    );
+
+
+    try {
+
+      const buf =
+        await file.arrayBuffer();
+
+
+      const byDate =
+        parseWorkbook(buf);
+
+
+      const dates =
+        Object.keys(byDate);
+
+
+      if (!dates.length) {
+
+        throw new Error(
+          'No valid Posting Date records found.'
+        );
+      }
+
+
+      const idx =
+        await getDateIndex();
+
+
+      for (
+        const dateKey of dates
+      ) {
+
+        const existing =
+          (
+            await getDayData(
+              dateKey
+            )
+          ) || {
+            workCenters: {},
+            fileNames: []
+          };
+
+
+        const incoming =
+          byDate[dateKey];
+
+
+        Object.entries(
+          incoming
+        ).forEach(
+          ([wc, batches]) => {
+
+            if (
+              !existing.workCenters[wc]
+            ) {
+
+              existing.workCenters[wc] =
+                {};
+            }
+
+
+            Object.entries(
+              batches
+            ).forEach(
+              ([batch, vals]) => {
+
+                existing
+                  .workCenters[wc][batch] =
+                  vals;
+              }
+            );
+          }
+        );
+
+
+        if (
+          !existing.fileNames.includes(
+            file.name
+          )
+        ) {
+
+          existing.fileNames.push(
+            file.name
+          );
+        }
+
+
+        existing.updatedAt =
+          new Date().toISOString();
+
+
+        await setDayData(
+          dateKey,
+          existing
+        );
+
+
+        if (
+          !idx.includes(dateKey)
+        ) {
+
+          idx.push(dateKey);
+        }
+      }
+
+
+      idx.sort().reverse();
+
+
+      await setDateIndex(idx);
+
+
+      showToast(
+        'Detected date(s): ' +
+        dates.join(', ') +
+        ' — saved as ' +
+        dates
+          .map(keyToLabel)
+          .join(', ')
+      );
+
+
+      currentDateKey =
+        dates[0];
+
+
+      await renderAll();
+
+    } catch (err) {
+
+      console.error(err);
+
+      showToast(
+        'Upload failed: ' +
+        err.message,
+        true
+      );
+    }
+  }
+
+
+  /* =========================================================
+     RENDER
+  ========================================================= */
+
+  async function renderAll() {
+
+    root.innerHTML = '';
+
+
+    const idx =
+      await getDateIndex();
+
+
+    const sidebar =
+      el(
+        'div',
+        {
+          class: 'sidebar'
+        }
+      );
+
+
+    const header =
+      el(
+        'div',
+        {
+          class: 'sidebar-header'
+        },
+        [
+          el(
+            'p',
+            {
+              class: 'sidebar-title'
+            },
+            [
+              document.createTextNode(
+                'Batch Tracker'
+              )
+            ]
+          ),
+
+          el(
+            'p',
+            {
+              class: 'sidebar-sub'
+            },
+            [
+              document.createTextNode(
+                'Work center wise production log'
+              )
+            ]
+          ),
+
+          el(
+            'p',
+            {
+              class: 'sidebar-sub',
+              style:
+                'margin-top:4px;opacity:0.7;'
+            },
+            [
+              document.createTextNode(
+                hasCloudStorage
+                  ? 'Synced to Claude cloud storage'
+                  : 'Saved in this browser only'
+              )
+            ]
+          ),
+
+          el(
+            'p',
+            {
+              class: 'sidebar-sub',
+              style:
+                'margin-top:2px;opacity:0.4;font-size:10px;'
+            },
+            [
+              document.createTextNode(
+                'build ' +
+                BUILD_TAG
+              )
+            ]
+          )
+        ]
+      );
+
+
+    sidebar.appendChild(
+      header
+    );
+
+
+    const uploadZone =
+      el(
+        'div',
+        {
+          class: 'upload-zone',
+          id: 'uploadZone'
+        }
+      );
+
+
+    uploadZone.innerHTML =
+      '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EDEAE3" stroke-width="1.6">' +
+      '<path d="M12 16V4M12 4l-4 4M12 4l4 4"/>' +
+      '<path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>' +
+      '</svg>' +
+      '<div class="upload-zone-text">' +
+      'Upload new day<br>(.xlsx export)' +
+      '</div>';
+
+
+    const fileInput =
+      el(
+        'input',
+        {
+          type: 'file',
+          accept: '.xlsx,.xls',
+          id: 'fileInput'
+        }
+      );
+
+
+    uploadZone.appendChild(
+      fileInput
+    );
+
+
+    uploadZone.addEventListener(
+      'click',
+      () => fileInput.click()
+    );
+
+
+    uploadZone.addEventListener(
+      'dragover',
+      e => {
+        e.preventDefault();
+        uploadZone.classList.add(
+          'dragover'
+        );
+      }
+    );
+
+
+    uploadZone.addEventListener(
+      'dragleave',
+      () =>
+        uploadZone.classList.remove(
+          'dragover'
+        )
+    );
+
+
+    uploadZone.addEventListener(
+      'drop',
+      e => {
+
+        e.preventDefault();
+
+        uploadZone.classList.remove(
+          'dragover'
+        );
+
+
+        if (
+          e.dataTransfer.files.length
+        ) {
+
+          handleFile(
+            e.dataTransfer.files[0]
+          );
+        }
+      }
+    );
+
+
+    fileInput.addEventListener(
+      'change',
+      e => {
+
+        if (
+          e.target.files.length
+        ) {
+
+          handleFile(
+            e.target.files[0]
+          );
+        }
+      }
+    );
+
+
+    sidebar.appendChild(
+      uploadZone
+    );
+
+
+    const resetBtn =
+      el(
+        'div',
+        {
+          class: 'reset-btn'
+        },
+        [
+          document.createTextNode(
+            'Clear all data'
+          )
+        ]
+      );
+
+
+    resetBtn.addEventListener(
+      'click',
+      async () => {
+
+        if (
+          !confirm(
+            'This will permanently delete ALL saved dates and data. Continue?'
+          )
+        ) {
+          return;
+        }
+
+
+        try {
+
+          const idxAll =
+            await getDateIndex();
+
+
+          for (
+            const dk of idxAll
+          ) {
+
+            await deleteDayData(
+              dk
+            );
+          }
+
+
+          await setDateIndex(
+            []
+          );
+
+
+          currentDateKey =
+            null;
+
+
+          showToast(
+            'All data cleared'
+          );
+
+
+          renderAll();
+
+        } catch (err) {
+
+          console.error(err);
+
+          showToast(
+            'Could not clear data: ' +
+            err.message,
+            true
+          );
+        }
+      }
+    );
+
+
+    sidebar.appendChild(
+      resetBtn
+    );
+
+
+    const dateList =
+      el(
+        'div',
+        {
+          class: 'date-list'
+        }
+      );
+
+
+    if (idx.length) {
+
+      dateList.appendChild(
+        el(
+          'div',
+          {
+            class: 'date-list-label'
+          },
+          [
+            document.createTextNode(
+              'Dates'
+            )
+          ]
+        )
+      );
+
+
+      const allItem =
+        el(
+          'div',
+          {
+            class:
+              'date-item' +
+              (
+                currentDateKey === 'ALL'
+                  ? ' active'
+                  : ''
+              )
+          },
+          [
+            document.createTextNode(
+              'All dates (combined)'
+            )
+          ]
+        );
+
+
+      allItem.addEventListener(
+        'click',
+        () => {
+
+          currentDateKey =
+            'ALL';
+
+          renderAll();
+        }
+      );
+
+
+      dateList.appendChild(
+        allItem
+      );
+
+
+      for (
+        const dateKey of idx
+      ) {
+
+        const item =
+          el(
+            'div',
+            {
+              class:
+                'date-item' +
+                (
+                  currentDateKey === dateKey
+                    ? ' active'
+                    : ''
+                )
+            }
+          );
+
+
+        const label =
+          el(
+            'span',
+            {},
+            [
+              document.createTextNode(
+                keyToLabel(
+                  dateKey
+                )
+              )
+            ]
+          );
+
+
+        item.appendChild(
+          label
+        );
+
+
+        const delBtn =
+          el(
+            'span',
+            {
+              class: 'date-del',
+              title: 'Delete this date'
+            },
+            [
+              document.createTextNode(
+                '\u00D7'
+              )
+            ]
+          );
+
+
+        delBtn.addEventListener(
+          'click',
+          async e => {
+
+            e.stopPropagation();
+
+
+            if (
+              !confirm(
+                'Delete all data for ' +
+                keyToLabel(dateKey) +
+                '? This cannot be undone.'
+              )
+            ) {
+              return;
+            }
+
+
+            try {
+
+              const idx2 =
+                await getDateIndex();
+
+
+              const newIdx =
+                idx2.filter(
+                  d => d !== dateKey
+                );
+
+
+              await setDateIndex(
+                newIdx
+              );
+
+
+              await deleteDayData(
+                dateKey
+              );
+
+
+              if (
+                currentDateKey === dateKey
+              ) {
+
+                currentDateKey =
+                  newIdx.length
+                    ? newIdx[0]
+                    : null;
+              }
+
+
+              showToast(
+                'Deleted ' +
+                keyToLabel(dateKey)
+              );
+
+
+              renderAll();
+
+            } catch (err) {
+
+              console.error(err);
+
+              showToast(
+                'Could not delete: ' +
+                err.message,
+                true
+              );
+            }
+          }
+        );
+
+
+        item.appendChild(
+          delBtn
+        );
+
+
+        item.addEventListener(
+          'click',
+          () => {
+
+            currentDateKey =
+              dateKey;
+
+            renderAll();
+          }
+        );
+
+
+        dateList.appendChild(
+          item
+        );
+      }
+
+
+      if (!currentDateKey) {
+        currentDateKey =
+          idx[0];
+      }
+
+    } else {
+
+      dateList.appendChild(
+        el(
+          'div',
+          {
+            class:
+              'date-list-label'
+          },
+          [
+            document.createTextNode(
+              'No data yet'
+            )
+          ]
+        )
+      );
+    }
+
+
+    sidebar.appendChild(
+      dateList
+    );
+
+
+    root.appendChild(
+      sidebar
+    );
+
+
+    const main =
+      el(
+        'div',
+        {
+          class: 'main'
+        }
+      );
+
+
+    root.appendChild(
+      main
+    );
+
+
+    if (!idx.length) {
+
+      main.appendChild(
+        el(
+          'div',
+          {
+            class: 'empty-state'
+          },
+          [
+            el(
+              'h2',
+              {},
+              [
+                document.createTextNode(
+                  'No data uploaded yet'
+                )
+              ]
+            ),
+
+            el(
+              'p',
+              {},
+              [
+                document.createTextNode(
+                  'Upload a SAP export (.xlsx) using the panel on the left. Charts and tables for every work center will appear here automatically, and stay saved for next time.'
+                )
+              ]
+            )
+          ]
+        )
+      );
+
+
+      return;
+    }
+
+
+    let grouped;
+    let label;
+    let fileNames = [];
+
+
+    if (
+      currentDateKey === 'ALL'
+    ) {
+
+      grouped = {};
+
+
+      for (
+        const dateKey of idx
+      ) {
+
+        const d =
+          await getDayData(
+            dateKey
+          );
+
+
+        if (!d) {
+          continue;
+        }
+
+
+        Object.entries(
+          d.workCenters
+        ).forEach(
+          ([wc, batches]) => {
+
+            if (!grouped[wc]) {
+              grouped[wc] = {};
+            }
+
+
+            Object.entries(
+              batches
+            ).forEach(
+              ([batch, vals]) => {
+
+                grouped[wc][batch] =
+                  vals;
+              }
+            );
+          }
+        );
+      }
+
+
+      label =
+        'All dates combined (' +
+        idx.length +
+        ' days)';
+
+    } else {
+
+      const d =
+        await getDayData(
+          currentDateKey
+        );
+
+
+      grouped =
+        d
+          ? d.workCenters
+          : {};
+
+
+      label =
+        keyToLabel(
+          currentDateKey
+        );
+
+
+      fileNames =
+        d
+          ? d.fileNames
+          : [];
+    }
+
+
+    const bucketed = {};
+
+
+    GROUP_ORDER.forEach(
+      g => {
+        bucketed[g] = {};
+      }
+    );
+
+
+    const otherBucket = {};
+
+
+    Object.entries(
+      grouped
+    ).forEach(
+      ([wc, batches]) => {
+
+        const sample =
+          Object.values(
+            batches
+          )[0];
+
+
+        const g =
+          (
+            sample &&
+            sample.group &&
+            GROUP_ORDER.includes(
+              sample.group
+            )
+          )
+            ? sample.group
+            : getGroupForRow(
+                null,
+                wc
+              );
+
+
+        const target =
+          GROUP_ORDER.includes(g)
+            ? bucketed[g]
+            : otherBucket;
+
+
+        target[wc] =
+          batches;
+      }
+    );
+
+
+    const activeTab =
+      DEPT_TABS.find(
+        t =>
+          t.key ===
+          currentDeptTab
+      ) ||
+      DEPT_TABS[0];
+
+
+    const groupsToRender =
+      activeTab.groups.slice();
+
+
+    let totalQty = 0;
+    let totalAmt = 0;
+    let totalTime = 0;
+    let batchCount = 0;
+    let wcCount = 0;
+
+
+    groupsToRender.forEach(
+      groupName => {
+
+        const wcMap =
+          groupName === 'Other'
+            ? otherBucket
+            : bucketed[groupName];
+
+
+        Object.values(
+          wcMap
+        ).forEach(
+          batches => {
+
+            wcCount++;
+
+
+            Object.values(
+              batches
+            ).forEach(v => {
+
+              totalQty += v.qty;
+              totalAmt += v.amt;
+              totalTime += v.time;
+
+              batchCount++;
+            });
+          }
+        );
+      }
+    );
+
+
+    const topbar =
+      el(
+        'div',
+        {
+          class: 'topbar'
+        },
+        [
+          el(
+            'h1',
+            {},
+            [
+              document.createTextNode(
+                label
+              )
+            ]
+          ),
+
+          el(
+            'div',
+            {
+              class: 'status'
+            },
+            [
+              document.createTextNode(
+                fileNames.length
+                  ? 'Source: ' +
+                    fileNames.join(', ')
+                  : ''
+              )
+            ]
+          )
+        ]
+      );
+
+
+    main.appendChild(
+      topbar
+    );
+
+
+    const statRow =
+      el(
+        'div',
+        {
+          class: 'stat-row'
+        },
+        [
+          statCard(
+            'Total Qty',
+            fmt(totalQty) +
+            ' kg',
+            'copper'
+          ),
+
+          statCard(
+            'Total Amount',
+            '\u20B9' +
+            fmt(totalAmt),
+            'forge'
+          ),
+
+          statCard(
+            'Total Run Time',
+            fmt(totalTime, 1) +
+            ' min',
+            'ember'
+          ),
+
+          statCard(
+            'Batches',
+            fmt(batchCount),
+            ''
+          ),
+
+          statCard(
+            'Work Centers',
+            fmt(wcCount),
+            ''
+          )
+        ]
+      );
+
+
+    main.appendChild(
+      statRow
+    );
+
+
+    /* =====================================================
+       DEPARTMENT TABS
+    ===================================================== */
+
+    const deptTabRow =
+      el(
+        'div',
+        {
+          class: 'dept-tab-row'
+        }
+      );
+
+
+    DEPT_TABS.forEach(
+      tab => {
+
+        const btn =
+          el(
+            'div',
+            {
+              class:
+                'dept-tab' +
+                (
+                  currentDeptTab === tab.key
+                    ? ' active'
+                    : ''
+                )
+            },
+            [
+              document.createTextNode(
+                tab.label
+              )
+            ]
+          );
+
+
+        btn.addEventListener(
+          'click',
+          () => {
+
+            currentDeptTab =
+              tab.key;
+
+            renderAll();
+          }
+        );
+
+
+        deptTabRow.appendChild(
+          btn
+        );
+      }
+    );
+
+
+    main.appendChild(
+      deptTabRow
+    );
+
+
+    /* =====================================================
+       TOOLBAR
+    ===================================================== */
+
+    const toolbar =
+      el(
+        'div',
+        {
+          class: 'toolbar'
+        }
+      );
+
+
+    const searchInput =
+      el(
+        'input',
+        {
+          type: 'text',
+          class: 'search-input',
+          placeholder:
+            'Search batch number…',
+          value: searchTerm
+        }
+      );
+
+
+    searchInput.addEventListener(
+      'input',
+      e => {
+
+        searchTerm =
+          e.target.value
+            .trim()
+            .toUpperCase();
+
+
+        applySearchFilter();
+      }
+    );
+
+
+    toolbar.appendChild(
+      searchInput
+    );
+
+
+    const exportBtn =
+      el(
+        'div',
+        {
+          class: 'export-btn'
+        },
+        [
+          document.createTextNode(
+            'Export CSV'
+          )
+        ]
+      );
+
+
+    exportBtn.addEventListener(
+      'click',
+      () =>
+        exportCurrentViewCsv(
+          activeTab,
+          groupsToRender,
+          bucketed,
+          otherBucket,
+          label
+        )
+    );
+
+
+    toolbar.appendChild(
+      exportBtn
+    );
+
+
+    main.appendChild(
+      toolbar
+    );
+
+
+    chartInstances.forEach(
+      c => c.destroy()
+    );
+
+
+    chartInstances = [];
+
+
+    let chartIdx = 0;
+
+
+    /* =====================================================
+       WORK CENTER SUMMARY
+    ===================================================== */
+
+    const summaryRows = [];
+
+
+    groupsToRender.forEach(
+      groupName => {
+
+        const wcMap =
+          groupName === 'Other'
+            ? otherBucket
+            : bucketed[groupName];
+
+
+        Object.entries(
+          wcMap
+        ).forEach(
+          ([wc, batches]) => {
+
+            let q = 0;
+            let a = 0;
+            let t = 0;
+            let n = 0;
+
+
+            Object.values(
+              batches
+            ).forEach(v => {
+
+              q += v.qty;
+              a += v.amt;
+              t += v.time;
+              n++;
+            });
+
+
+            summaryRows.push({
+              wc,
+              qty: q,
+              amt: a,
+              time: t,
+              batches: n
+            });
+          }
+        );
+      }
+    );
+
+
+    if (summaryRows.length) {
+
+      summaryRows.sort(
+        (a, b) =>
+          b.qty - a.qty
+      );
+
+
+      const summarySection =
+        el(
+          'div',
+          {
+            class:
+              'summary-section'
+          }
+        );
+
+
+      summarySection.appendChild(
+        el(
+          'h3',
+          {
+            class:
+              'trend-title'
+          },
+          [
+            document.createTextNode(
+              activeTab.label +
+              ' — work center summary'
+            )
+          ]
+        )
+      );
+
+
+      const sTable =
+        el(
+          'table',
+          {},
+          [
+            el(
+              'thead',
+              {},
+              [
+                el(
+                  'tr',
+                  {},
+                  [
+                    el(
+                      'th',
+                      {},
+                      [
+                        document.createTextNode(
+                          'Work Center'
+                        )
+                      ]
+                    ),
+
+                    el(
+                      'th',
+                      {},
+                      [
+                        document.createTextNode(
+                          'Batches'
+                        )
+                      ]
+                    ),
+
+                    el(
+                      'th',
+                      {},
+                      [
+                        document.createTextNode(
+                          'Qty (KG)'
+                        )
+                      ]
+                    ),
+
+                    el(
+                      'th',
+                      {},
+                      [
+                        document.createTextNode(
+                          'Amount (Rs)'
+                        )
+                      ]
+                    ),
+
+                    el(
+                      'th',
+                      {},
+                      [
+                        document.createTextNode(
+                          'Time (min)'
+                        )
+                      ]
+                    )
+                  ]
+                )
+              ]
+            )
+          ]
+        );
+
+
+      const sBody =
+        el(
+          'tbody',
+          {}
+        );
+
+
+      summaryRows.forEach(
+        r => {
+
+          sBody.appendChild(
+            el(
+              'tr',
+              {},
+              [
+                el(
+                  'td',
+                  {},
+                  [
+                    document.createTextNode(
+                      r.wc
+                    )
+                  ]
+                ),
+
+                el(
+                  'td',
+                  {
+                    class: 'num'
+                  },
+                  [
+                    document.createTextNode(
+                      fmt(r.batches)
+                    )
+                  ]
+                ),
+
+                el(
+                  'td',
+                  {
+                    class: 'num'
+                  },
+                  [
+                    document.createTextNode(
+                      fmt(r.qty)
+                    )
+                  ]
+                ),
+
+                el(
+                  'td',
+                  {
+                    class: 'num'
+                  },
+                  [
+                    document.createTextNode(
+                      fmt(r.amt)
+                    )
+                  ]
+                ),
+
+                el(
+                  'td',
+                  {
+                    class: 'num'
+                  },
+                  [
+                    document.createTextNode(
+                      fmt(r.time, 1)
+                    )
+                  ]
+                )
+              ]
+            )
+          );
+        }
+      );
+
+
+      sTable.appendChild(
+        sBody
+      );
+
+
+      summarySection.appendChild(
+        sTable
+      );
+
+
+      main.appendChild(
+        summarySection
+      );
+    }
+
+
+    /* =====================================================
+       GROUPS
+    ===================================================== */
+
+    groupsToRender.forEach(
+      groupName => {
+
+        const wcMap =
+          groupName === 'Other'
+            ? otherBucket
+            : bucketed[groupName];
+
+
+        const groupSection =
+          el(
+            'div',
+            {
+              class:
+                'group-section'
+            }
+          );
+
+
+        groupSection.appendChild(
+          el(
+            'h1',
+            {
+              class:
+                'group-title'
+            },
+            [
+              document.createTextNode(
+                groupName
+              )
+            ]
+          )
+        );
+
+
+        const workCenters =
+          Object.keys(
+            wcMap
+          ).sort();
+
+
+        if (
+          !workCenters.length
+        ) {
+
+          groupSection.appendChild(
+            el(
+              'div',
+              {
+                class:
+                  'group-empty'
+              },
+              [
+                document.createTextNode(
+                  'No data yet for this section.'
+                )
+              ]
+            )
+          );
+
+
+          main.appendChild(
+            groupSection
+          );
+
+
+          return;
+        }
+
+
+        workCenters.forEach(
+          wc => {
+
+            const batches =
+              Object.entries(
+                wcMap[wc]
+              )
+                .map(
+                  ([batch, v]) => ({
+                    batch,
+                    qty: v.qty,
+                    amt: v.amt,
+                    time: v.time,
+
+                    products:
+                      (
+                        v.products ||
+                        []
+                      ).join(', '),
+
+                    rate:
+                      v.qty > 0
+                        ? v.amt / v.qty
+                        : null,
+
+                    throughput:
+                      v.time > 0
+                        ? v.qty / v.time
+                        : null
+                  })
+                )
+                .sort(
+                  (a, b) =>
+                    b.qty - a.qty
+                );
+
+
+            /* ---------------------------------------------
+               OUTLIERS
+            --------------------------------------------- */
+
+            const rates =
+              batches
+                .map(
+                  b => b.rate
+                )
+                .filter(
+                  r =>
+                    r !== null
+                )
+                .sort(
+                  (a, b) =>
+                    a - b
+                );
+
+
+            const throughputs =
+              batches
+                .map(
+                  b =>
+                    b.throughput
+                )
+                .filter(
+                  t =>
+                    t !== null
+                )
+                .sort(
+                  (a, b) =>
+                    a - b
+                );
+
+
+            const medRate =
+              rates.length
+                ? rates[
+                    Math.floor(
+                      rates.length / 2
+                    )
+                  ]
+                : null;
+
+
+            const medThroughput =
+              throughputs.length
+                ? throughputs[
+                    Math.floor(
+                      throughputs.length / 2
+                    )
+                  ]
+                : null;
+
+
+            batches.forEach(
+              b => {
+
+                b.flags = [];
+
+
+                if (
+                  medRate &&
+                  b.rate !== null &&
+                  b.rate >
+                    medRate * 1.75
+                ) {
+
+                  b.flags.push(
+                    'High cost'
+                  );
+                }
+
+
+                if (
+                  medThroughput &&
+                  b.throughput !== null &&
+                  b.throughput <
+                    medThroughput * 0.25
+                ) {
+
+                  b.flags.push(
+                    'Slow'
+                  );
+                }
+              }
+            );
+
+
+            /* ---------------------------------------------
+               WORK CENTER SECTION
+            --------------------------------------------- */
+
+            const section =
+              el(
+                'div',
+                {
+                  class:
+                    'wc-section'
+                }
+              );
+
+
+            section.appendChild(
+              el(
+                'h2',
+                {},
+                [
+                  el(
+                    'span',
+                    {
+                      class: 'bar'
+                    },
+                    []
+                  ),
+
+                  document.createTextNode(
+                    wc
+                  )
+                ]
+              )
+            );
+
+
+            section.appendChild(
+              el(
+                'div',
+                {
+                  class:
+                    'wc-sub'
+                },
+                [
+                  document.createTextNode(
+                    batches.length +
+                    ' batches'
+                  )
+                ]
+              )
+            );
+
+
+            const canvas =
+              el(
+                'canvas',
+                {
+                  id:
+                    'chart_' +
+                    chartIdx++
+                }
+              );
+
+
+            section.appendChild(
+              canvas
+            );
+
+
+            /* ---------------------------------------------
+               TABLE
+            --------------------------------------------- */
+
+            const tableWrap =
+              el(
+                'div',
+                {
+                  class:
+                    'table-wrap'
+                }
+              );
+
+
+            const table =
+              el(
+                'table',
+                {},
+                [
+                  el(
+                    'thead',
+                    {},
+                    [
+                      el(
+                        'tr',
+                        {},
+                        [
+                          el(
+                            'th',
+                            {},
+                            [
+                              document.createTextNode(
+                                'Batch'
+                              )
+                            ]
+                          ),
+
+                          el(
+                            'th',
+                            {},
+                            [
+                              document.createTextNode(
+                                'Product'
+                              )
+                            ]
+                          ),
+
+                          el(
+                            'th',
+                            {},
+                            [
+                              document.createTextNode(
+                                'Qty (KG)'
+                              )
+                            ]
+                          ),
+
+                          el(
+                            'th',
+                            {},
+                            [
+                              document.createTextNode(
+                                'Amount (Rs)'
+                              )
+                            ]
+                          ),
+
+                          el(
+                            'th',
+                            {},
+                            [
+                              document.createTextNode(
+                                'Time (min)'
+                              )
+                            ]
+                          ),
+
+                          el(
+                            'th',
+                            {},
+                            [
+                              document.createTextNode(
+                                'Rate (Rs/KG)'
+                              )
+                            ]
+                          ),
+
+                          el(
+                            'th',
+                            {},
+                            [
+                              document.createTextNode(
+                                'Flags'
+                              )
+                            ]
+                          )
+                        ]
+                      )
+                    ]
+                  )
+                ]
+              );
+
+
+            const tbody =
+              el(
+                'tbody',
+                {}
+              );
+
+
+            batches.forEach(
+              b => {
+
+                const row =
+                  el(
+                    'tr',
+                    {
+                      class:
+                        b.flags.length
+                          ? 'flagged-row'
+                          : '',
+                      'data-batch':
+                        b.batch
+                          .toUpperCase()
+                    },
+                    [
+                      el(
+                        'td',
+                        {
+                          class:
+                            'batch-code'
+                        },
+                        [
+                          document.createTextNode(
+                            b.batch
+                          )
+                        ]
+                      ),
+
+                      el(
+                        'td',
+                        {},
+                        [
+                          document.createTextNode(
+                            b.products ||
+                            '-'
+                          )
+                        ]
+                      ),
+
+                      el(
+                        'td',
+                        {
+                          class: 'num'
+                        },
+                        [
+                          document.createTextNode(
+                            fmt(b.qty)
+                          )
+                        ]
+                      ),
+
+                      el(
+                        'td',
+                        {
+                          class: 'num'
+                        },
+                        [
+                          document.createTextNode(
+                            fmt(b.amt)
+                          )
+                        ]
+                      ),
+
+                      el(
+                        'td',
+                        {
+                          class: 'num'
+                        },
+                        [
+                          document.createTextNode(
+                            fmt(
+                              b.time,
+                              1
+                            )
+                          )
+                        ]
+                      ),
+
+                      el(
+                        'td',
+                        {
+                          class: 'num'
+                        },
+                        [
+                          document.createTextNode(
+                            b.rate !== null
+                              ? fmt(
+                                  b.rate,
+                                  2
+                                )
+                              : '-'
+                          )
+                        ]
+                      ),
+
+                      el(
+                        'td',
+                        {},
+                        b.flags.length
+                          ? b.flags.map(
+                              f =>
+                                el(
+                                  'span',
+                                  {
+                                    class:
+                                      'flag-badge'
+                                  },
+                                  [
+                                    document.createTextNode(
+                                      f
+                                    )
+                                  ]
+                                )
+                            )
+                          : [
+                              document.createTextNode(
+                                ''
+                              )
+                            ]
+                      )
+                    ]
+                  );
+
+
+                tbody.appendChild(
+                  row
+                );
+              }
+            );
+
+
+            table.appendChild(
+              tbody
+            );
+
+
+            tableWrap.appendChild(
+              table
+            );
+
+
+            section.appendChild(
+              tableWrap
+            );
+
+
+            groupSection.appendChild(
+              section
+            );
+
+
+            /* ---------------------------------------------
+               CHART
+            --------------------------------------------- */
+
+            const ctx =
+              canvas.getContext(
+                '2d'
+              );
+
+
+            const chart =
+              new Chart(
+                ctx,
+                {
+                  type: 'bar',
+
+                  data: {
+                    labels:
+                      batches.map(
+                        b =>
+                          b.batch
+                      ),
+
+                    datasets: [
+                      {
+                        label:
+                          'Total Qty (KG)',
+
+                        data:
+                          batches.map(
+                            b =>
+                              b.qty
+                          ),
+
+                        backgroundColor:
+                          '#BE6A34'
+                      },
+
+                      {
+                        label:
+                          'Total Amount (Rs)',
+
+                        data:
+                          batches.map(
+                            b =>
+                              b.amt
+                          ),
+
+                        backgroundColor:
+                          '#3F6E52'
+                      },
+
+                      {
+                        label:
+                          'Total Time (min)',
+
+                        data:
+                          batches.map(
+                            b =>
+                              b.time
+                          ),
+
+                        backgroundColor:
+                          '#C9932F'
+                      }
+                    ]
+                  },
+
+                  options: {
+                    responsive: true,
+
+                    plugins: {
+                      legend: {
+                        position:
+                          'bottom',
+
+                        labels: {
+                          boxWidth:
+                            12,
+
+                          font: {
+                            size: 11
+                          }
+                        }
+                      }
+                    },
+
+                    scales: {
+                      x: {
+                        ticks: {
+                          autoSkip:
+                            false,
+
+                          maxRotation:
+                            60,
+
+                          minRotation:
+                            45,
+
+                          font: {
+                            size: 10
+                          }
+                        }
+                      },
+
+                      y: {
+                        beginAtZero:
+                          true
+                      }
+                    }
+                  }
+                }
+              );
+
+
+            chartInstances.push(
+              chart
+            );
+          }
+        );
+
+
+        main.appendChild(
+          groupSection
+        );
+      }
+    );
+  }
+
+
+  /* =========================================================
+     STAT CARD
+  ========================================================= */
+
+  function statCard(
+    label,
+    value,
+    variant
+  ) {
+
+    return el(
+      'div',
+      {
+        class:
+          'stat-card' +
+          (
+            variant
+              ? ' ' + variant
+              : ''
+          )
+      },
+      [
+        el(
+          'div',
+          {
+            class: 'label'
+          },
+          [
+            document.createTextNode(
+              label
+            )
+          ]
+        ),
+
+        el(
+          'div',
+          {
+            class: 'value'
+          },
+          [
+            document.createTextNode(
+              value
+            )
+          ]
+        )
+      ]
+    );
+  }
+
+
+  /* =========================================================
+     SEARCH
+  ========================================================= */
+
+  function applySearchFilter() {
+
+    const rows =
+      document.querySelectorAll(
+        'tr[data-batch]'
+      );
+
+
+    rows.forEach(
+      row => {
+
+        const match =
+          !searchTerm ||
+          row
+            .getAttribute(
+              'data-batch'
+            )
+            .includes(
+              searchTerm
+            );
+
+
+        row.style.display =
+          match
+            ? ''
+            : 'none';
+      }
+    );
+
+
+    document
+      .querySelectorAll(
+        '.wc-section'
+      )
+      .forEach(
+        section => {
+
+          const visibleRows =
+            section.querySelectorAll(
+              'tr[data-batch]:not([style*="display: none"])'
+            );
+
+
+          section.style.display =
+            (
+              searchTerm &&
+              visibleRows.length === 0
+            )
+              ? 'none'
+              : '';
+        }
+      );
+  }
+
+
+  /* =========================================================
+     CSV
+  ========================================================= */
+
+  function csvEscape(v) {
+
+    const s =
+      String(
+        v === null ||
+        v === undefined
+          ? ''
+          : v
+      );
+
+
+    return /[",\n]/.test(s)
+      ? '"' +
+        s.replace(
+          /"/g,
+          '""'
+        ) +
+        '"'
+      : s;
+  }
+
+
+  function exportCurrentViewCsv(
+    activeTab,
+    groupsToRender,
+    bucketed,
+    otherBucket,
+    label
+  ) {
+
+    const rows = [
+      [
+        'Department',
+        'Work Center',
+        'Batch',
+        'Product',
+        'Qty (KG)',
+        'Amount (Rs)',
+        'Time (min)',
+        'Rate (Rs/KG)'
+      ]
+    ];
+
+
+    groupsToRender.forEach(
+      groupName => {
+
+        const wcMap =
+          groupName === 'Other'
+            ? otherBucket
+            : bucketed[groupName];
+
+
+        Object.entries(
+          wcMap
+        ).forEach(
+          ([wc, batches]) => {
+
+            Object.entries(
+              batches
+            ).forEach(
+              ([batch, v]) => {
+
+                const rate =
+                  v.qty > 0
+                    ? (
+                        v.amt /
+                        v.qty
+                      ).toFixed(2)
+                    : '';
+
+
+                rows.push([
+                  activeTab.label,
+                  wc,
+                  batch,
+
+                  (
+                    v.products ||
+                    []
+                  ).join('; '),
+
+                  v.qty,
+                  v.amt,
+                  v.time,
+                  rate
+                ]);
+              }
+            );
+          }
+        );
+      }
+    );
+
+
+    const csv =
+      rows
+        .map(
+          r =>
+            r
+              .map(csvEscape)
+              .join(',')
+        )
+        .join('\n');
+
+
+    const blob =
+      new Blob(
+        [csv],
+        {
+          type:
+            'text/csv;charset=utf-8;'
+        }
+      );
+
+
+    const url =
+      URL.createObjectURL(
+        blob
+      );
+
+
+    const a =
+      document.createElement(
+        'a'
+      );
+
+
+    a.href = url;
+
+
+    a.download =
+      'CCP_' +
+      activeTab.key +
+      '_' +
+      label.replace(
+        /[^a-z0-9]/gi,
+        '_'
+      ) +
+      '.csv';
+
+
+    document.body.appendChild(
+      a
+    );
+
+
+    a.click();
+
+
+    document.body.removeChild(
+      a
+    );
+
+
+    URL.revokeObjectURL(
+      url
+    );
+
+
+    showToast(
+      'Exported CSV'
+    );
+  }
+
+
+  /* =========================================================
+     DEBUG
+  ========================================================= */
+
+  window.__ccpDebug = {
+    handleFile,
+    renderAll,
+    getDateIndex,
+    getDayData,
+    deleteDayData,
+    parseWorkbook,
+    getGroupForRow,
+    dateToKey,
+    excelSerialToKey,
+    parseDateString
+  };
+
+
+  renderAll();
+
+})();
+</script>
