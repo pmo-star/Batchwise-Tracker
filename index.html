@@ -2080,9 +2080,11 @@
     );
 
 
-    sidebar.appendChild(
-      resetBtn
-    );
+    // Clear-all-data button disabled: data is now shared across departments
+    // via the Google Sheet backend, so a one-click global wipe is too risky.
+    // sidebar.appendChild(
+    //   resetBtn
+    // );
 
 
     const dateList =
