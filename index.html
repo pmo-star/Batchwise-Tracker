@@ -501,15 +501,67 @@
     opacity: 1;
     transform: translateY(0);
   }
+  /* ---- print / PDF export styles ---- */
+  #printArea {
+    display: none;
+  }
+  body.printing #app-root {
+    display: none;
+  }
+  body.printing #printArea {
+    display: block;
+  }
+  #printArea .print-header { margin-bottom: 18px; }
+  #printArea h1 { font-size: 20px; margin: 0 0 4px; color: #211D18; }
+  #printArea .print-sub { font-size: 11px; color: #6B6255; }
+  #printArea h2.print-dept {
+    font-size: 15px; text-transform: uppercase; letter-spacing: 0.6px;
+    border-bottom: 2px solid #2B3038; padding-bottom: 6px; margin: 26px 0 10px;
+    page-break-before: always;
+  }
+  #printArea h2.print-dept:first-of-type { page-break-before: avoid; }
+  #printArea h3.print-wc { font-size: 13px; margin: 16px 0 6px; color: #211D18; }
+  #printArea .print-empty { font-size: 12px; color: #6B6255; font-style: italic; }
+  #printArea table.print-table {
+    width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 10px;
+  }
+  #printArea table.print-table th {
+    background: #2B3038; color: #fff; text-align: left; padding: 5px 8px;
+  }
+  #printArea table.print-table td {
+    padding: 4px 8px; border-bottom: 1px solid #ddd;
+  }
+  #printArea table.print-table td.num { text-align: right; }
+
+  @media print {
+    body.printing #printArea table.print-table {
+      page-break-inside: auto;
+    }
+    body.printing #printArea tr {
+      page-break-inside: avoid;
+    }
+  }
+
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 
 <script>
 (function() {
 
   const BUILD_TAG = '2026-09-01-date-fix-v3';
+
+  // Point pdf.js at its worker script (loaded from the same CDN as the
+  // main library) so it runs PDF parsing off the main thread instead of
+  // silently falling back to a slower "fake worker".
+  if (typeof pdfjsLib !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+  }
 
   const root = document.getElementById('app-root');
 
@@ -1353,41 +1405,153 @@
      to decode them without timezone shifting.
   ========================================================= */
 
-  function parseWorkbook(arrayBuffer) {
+  async function extractRowsFromPdf(arrayBuffer) {
 
-    const wb =
-      XLSX.read(
-        new Uint8Array(arrayBuffer),
-        {
-          type: 'array',
+    const data =
+      new Uint8Array(arrayBuffer);
 
-          /*
-            VERY IMPORTANT:
-            Do not let SheetJS convert Excel
-            serial dates into JavaScript Date.
-          */
-          cellDates: false,
 
-          cellNF: true
+    const pdf =
+      await pdfjsLib.getDocument(
+        { data }
+      ).promise;
+
+
+    const dataRows = [];
+    let headerRow = null;
+
+
+    for (let p = 1; p <= pdf.numPages; p++) {
+
+      const page =
+        await pdf.getPage(p);
+
+      const content =
+        await page.getTextContent();
+
+
+      // group text items into rows by their (rounded) y position,
+      // then sort left-to-right by x — each PDF text item is already
+      // a full column value (SAP's own text-run boundaries), so this
+      // reconstructs the original table with no ambiguity.
+      const rowMap = {};
+
+      content.items.forEach(item => {
+
+        const y =
+          Math.round(item.transform[5]);
+
+        const x =
+          item.transform[4];
+
+        if (!rowMap[y]) {
+          rowMap[y] = [];
         }
-      );
 
-
-    const sheet =
-      wb.Sheets[
-        wb.SheetNames[0]
-      ];
-
-
-    const rows =
-      XLSX.utils.sheet_to_json(
-        sheet,
-        {
-          header: 1,
-          raw: true,
-          defval: null
+        if (item.str.trim() !== '') {
+          rowMap[y].push({ x, str: item.str });
         }
+      });
+
+
+      const sortedYs =
+        Object.keys(rowMap)
+          .map(Number)
+          .sort((a, b) => b - a);
+
+
+      sortedYs.forEach(y => {
+
+        const cells =
+          rowMap[y]
+            .sort((a, b) => a.x - b.x)
+            .map(c => c.str);
+
+
+        // title lines and page-number lines never have the full
+        // column count, so this alone filters them out reliably.
+        if (cells.length < 10) {
+          return;
+        }
+
+        if (cells[0] === 'Company Code') {
+          // this is a repeated header row (appears on every page) —
+          // capture it once, but don't treat it as data.
+          if (!headerRow) {
+            headerRow = cells;
+          }
+          return;
+        }
+
+        dataRows.push(cells);
+      });
+    }
+
+
+    if (!headerRow) {
+      throw new Error(
+        'Could not find the header row in this PDF.'
       );
+    }
+
+    if (!dataRows.length) {
+      throw new Error(
+        'No data rows found in this PDF.'
+      );
+    }
+
+
+    return [headerRow, ...dataRows];
+  }
+
+
+  async function parseWorkbook(arrayBuffer, isPdf) {
+
+    let rows;
+
+    if (isPdf) {
+
+      rows =
+        await extractRowsFromPdf(
+          arrayBuffer
+        );
+
+    } else {
+
+      const wb =
+        XLSX.read(
+          new Uint8Array(arrayBuffer),
+          {
+            type: 'array',
+
+            /*
+              VERY IMPORTANT:
+              Do not let SheetJS convert Excel
+              serial dates into JavaScript Date.
+            */
+            cellDates: false,
+
+            cellNF: true
+          }
+        );
+
+
+      const sheet =
+        wb.Sheets[
+          wb.SheetNames[0]
+        ];
+
+
+      rows =
+        XLSX.utils.sheet_to_json(
+          sheet,
+          {
+            header: 1,
+            raw: true,
+            defval: null
+          }
+        );
+    }
 
 
     if (!rows.length) {
@@ -1674,8 +1838,12 @@
         await file.arrayBuffer();
 
 
+      const isPdf =
+        file.name.toLowerCase().endsWith('.pdf');
+
+
       const byDate =
-        parseWorkbook(buf);
+        await parseWorkbook(buf, isPdf);
 
 
       const dates =
@@ -1917,7 +2085,7 @@
       '<path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>' +
       '</svg>' +
       '<div class="upload-zone-text">' +
-      'Upload new day<br>(.xlsx export)' +
+      'Upload new day<br>(.xlsx or .pdf export)' +
       '</div>';
 
 
@@ -1926,7 +2094,7 @@
         'input',
         {
           type: 'file',
-          accept: '.xlsx,.xls',
+          accept: '.xlsx,.xls,.pdf',
           id: 'fileInput'
         }
       );
@@ -2007,84 +2175,9 @@
     );
 
 
-    const resetBtn =
-      el(
-        'div',
-        {
-          class: 'reset-btn'
-        },
-        [
-          document.createTextNode(
-            'Clear all data'
-          )
-        ]
-      );
-
-
-    resetBtn.addEventListener(
-      'click',
-      async () => {
-
-        if (
-          !confirm(
-            'This will permanently delete ALL saved dates and data. Continue?'
-          )
-        ) {
-          return;
-        }
-
-
-        try {
-
-          const idxAll =
-            await getDateIndex();
-
-
-          for (
-            const dk of idxAll
-          ) {
-
-            await deleteDayData(
-              dk
-            );
-          }
-
-
-          await setDateIndex(
-            []
-          );
-
-
-          currentDateKey =
-            null;
-
-
-          showToast(
-            'All data cleared'
-          );
-
-
-          renderAll();
-
-        } catch (err) {
-
-          console.error(err);
-
-          showToast(
-            'Could not clear data: ' +
-            err.message,
-            true
-          );
-        }
-      }
-    );
-
-
-    // Clear-all-data button disabled: data is now shared across departments
-    // via the Google Sheet backend, so a one-click global wipe is too risky.
-    // sidebar.appendChild(
-    //   resetBtn
-    // );
+    // "Clear all data" button removed entirely: data is now shared across
+    // departments via the Google Sheet backend, so a one-click global wipe
+    // is too risky to expose in the UI.
 
 
     const dateList =
@@ -2145,9 +2238,10 @@
       );
 
 
-      dateList.appendChild(
-        allItem
-      );
+      // "All dates (combined)" option disabled for now.
+      // dateList.appendChild(
+      //   allItem
+      // );
 
 
       for (
@@ -2773,7 +2867,7 @@
         },
         [
           document.createTextNode(
-            'Export CSV'
+            'Export PDF'
           )
         ]
       );
@@ -2782,7 +2876,7 @@
     exportBtn.addEventListener(
       'click',
       () =>
-        exportCurrentViewCsv(
+        exportDeptPdf(
           activeTab,
           groupsToRender,
           bucketed,
@@ -3835,172 +3929,80 @@
 
 
   /* =========================================================
-     CSV
+     PDF EXPORT (current department only) — generates a real PDF
+     file client-side using jsPDF + autoTable and triggers a direct
+     download, with no print dialog involved.
   ========================================================= */
 
-  function csvEscape(v) {
+  function exportDeptPdf(activeTab, groupsToRender, bucketed, otherBucket, label) {
+    if (typeof window.jspdf === 'undefined') {
+      showToast('PDF library failed to load — check your internet connection and try again.', true);
+      return;
+    }
 
-    const s =
-      String(
-        v === null ||
-        v === undefined
-          ? ''
-          : v
-      );
+    const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4' });
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let y = 40;
 
+    doc.setFontSize(16);
+    doc.text('CCP Batch Tracker \u2014 ' + activeTab.label, 40, y);
+    y += 18;
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(label + '  \u2014  generated ' + new Date().toLocaleString(), 40, y);
+    doc.setTextColor(0);
+    y += 24;
 
-    return /[",\n]/.test(s)
-      ? '"' +
-        s.replace(
-          /"/g,
-          '""'
-        ) +
-        '"'
-      : s;
-  }
+    groupsToRender.forEach(groupName => {
+      const wcMap = groupName === 'Other' ? otherBucket : bucketed[groupName];
+      const workCenters = Object.keys(wcMap).sort();
 
-
-  function exportCurrentViewCsv(
-    activeTab,
-    groupsToRender,
-    bucketed,
-    otherBucket,
-    label
-  ) {
-
-    const rows = [
-      [
-        'Department',
-        'Work Center',
-        'Batch',
-        'Product',
-        'Qty (KG)',
-        'Amount (Rs)',
-        'Time (min)',
-        'Rate (Rs/KG)'
-      ]
-    ];
-
-
-    groupsToRender.forEach(
-      groupName => {
-
-        const wcMap =
-          groupName === 'Other'
-            ? otherBucket
-            : bucketed[groupName];
-
-
-        Object.entries(
-          wcMap
-        ).forEach(
-          ([wc, batches]) => {
-
-            Object.entries(
-              batches
-            ).forEach(
-              ([batch, v]) => {
-
-                const rate =
-                  v.qty > 0
-                    ? (
-                        v.amt /
-                        v.qty
-                      ).toFixed(2)
-                    : '';
-
-
-                rows.push([
-                  activeTab.label,
-                  wc,
-                  batch,
-
-                  (
-                    v.products ||
-                    []
-                  ).join('; '),
-
-                  v.qty,
-                  v.amt,
-                  v.time,
-                  rate
-                ]);
-              }
-            );
-          }
-        );
+      if (!workCenters.length) {
+        doc.setFontSize(11);
+        doc.text('No data for this section.', 40, y);
+        y += 20;
+        return;
       }
-    );
 
+      workCenters.forEach(wc => {
+        const batches = Object.entries(wcMap[wc])
+          .map(([batch, v]) => ({
+            batch, qty: v.qty, amt: v.amt, time: v.time,
+            products: (v.products || []).join(', '),
+            rate: v.qty > 0 ? v.amt / v.qty : null
+          }))
+          .sort((a, b) => b.qty - a.qty);
 
-    const csv =
-      rows
-        .map(
-          r =>
-            r
-              .map(csvEscape)
-              .join(',')
-        )
-        .join('\n');
+        if (y > pageHeight - 100) { doc.addPage(); y = 40; }
 
+        doc.setFontSize(12);
+        doc.text(wc + ' (' + batches.length + ' batches)', 40, y);
+        y += 8;
 
-    const blob =
-      new Blob(
-        [csv],
-        {
-          type:
-            'text/csv;charset=utf-8;'
-        }
-      );
+        doc.autoTable({
+          startY: y,
+          head: [['Batch', 'Product', 'Qty (KG)', 'Amount (Rs)', 'Time (min)', 'Rate (Rs/KG)']],
+          body: batches.map(b => [
+            b.batch,
+            b.products || '-',
+            fmt(b.qty),
+            fmt(b.amt),
+            fmt(b.time, 1),
+            b.rate !== null ? fmt(b.rate, 2) : '-'
+          ]),
+          styles: { fontSize: 8, cellPadding: 3 },
+          headStyles: { fillColor: [43, 48, 56] },
+          margin: { left: 40, right: 40 },
+          theme: 'grid'
+        });
 
+        y = doc.lastAutoTable.finalY + 20;
+      });
+    });
 
-    const url =
-      URL.createObjectURL(
-        blob
-      );
-
-
-    const a =
-      document.createElement(
-        'a'
-      );
-
-
-    a.href = url;
-
-
-    a.download =
-      'CCP_' +
-      activeTab.key +
-      '_' +
-      label.replace(
-        /[^a-z0-9]/gi,
-        '_'
-      ) +
-      '.csv';
-
-
-    document.body.appendChild(
-      a
-    );
-
-
-    a.click();
-
-
-    document.body.removeChild(
-      a
-    );
-
-
-    URL.revokeObjectURL(
-      url
-    );
-
-
-    showToast(
-      'Exported CSV'
-    );
+    const filename = 'CCP_' + activeTab.key + '_' + label.replace(/[^a-z0-9]/gi, '_') + '.pdf';
+    doc.save(filename);
+    showToast('PDF downloaded: ' + filename);
   }
 
 
