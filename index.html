@@ -91,9 +91,9 @@ const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzkfY8LRSr
 
 const GROUP_MAP = {
   ZCCP: 'CCP / Mill', ZMILL: 'CCP / Mill', ZPULV: 'CCP / Mill', ZCH01: 'CCP / Mill',
-  ZCOIN: 'Coin', ZCL01: 'Coil (CL01)', ZCUP: 'Cup', ZCASE: 'Case'
+  ZCOIN: 'Coin', ZCL01: 'Coil', ZCUP: 'Cup', ZCASE: 'Case'
 };
-const DEPARTMENTS = ['CCP / Mill', 'Coin', 'Coil (CL01)', 'Cup', 'Case'];
+const DEPARTMENTS = ['CCP / Mill', 'Coin', 'Coil', 'Cup', 'Case'];
 
 /* ============================================================
    STORAGE (Google Sheet backend, in-memory cache)
@@ -109,7 +109,15 @@ async function sheetGet(key) {
 }
 async function sheetSet(key, value) {
   cache[key] = value;
-  await fetch(GOOGLE_SHEET_API_URL, { method: 'POST', body: JSON.stringify({ action: 'set', key, value }) });
+  // Apps Script Web Apps don't send CORS headers on POST responses, so the
+  // browser blocks reading them even though the write itself succeeds
+  // server-side. no-cors mode fires the request without needing to read
+  // the (unreadable) response — the write still lands correctly.
+  await fetch(GOOGLE_SHEET_API_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: JSON.stringify({ action: 'set', key, value })
+  });
 }
 async function getDateIndex() {
   const raw = await sheetGet('v2-date-index');
