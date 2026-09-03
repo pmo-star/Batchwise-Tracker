@@ -260,7 +260,6 @@ async function parseWorkbook(arrayBuffer, isPdf) {
   const locCol = findCol(headers, ['Storage Location'], ['storage', 'location']);
   const wcCol = findCol(headers, ['Work Center Text'], ['work', 'center'], ['code']);
   const matCol = findCol(headers, ['Material Group'], ['material', 'group']);
-  const matCodeCol = findCol(headers, ['Material Code'], ['material', 'code'], ['description', 'group']);
   const batchCol = findCol(headers, ['Batch']);
   const dateCol = findCol(headers, ['Posting Date'], ['posting', 'date']);
   const qtyCol = findCol(headers, null, ['qty'], ['unit']);
@@ -281,10 +280,9 @@ async function parseWorkbook(arrayBuffer, isPdf) {
     const dept = GROUP_MAP[loc] || loc || 'Other';
     const wc = (r[wcCol] || 'Unknown').toString().trim();
     const mat = matCol !== -1 ? (r[matCol] || '').toString().trim() : '';
-    const matCode = matCodeCol !== -1 ? (r[matCodeCol] || '').toString().trim() : '';
     const batch = batchCol !== -1 ? (r[batchCol] || '').toString().trim() : '';
     const row = {
-      dept, wc, mat: mat || null, matCode: matCode || null, batch: batch || null,
+      dept, wc, mat: mat || null, batch: batch || null,
       qty: qtyCol !== -1 ? num(r[qtyCol]) : 0,
       storeD: storeDCol !== -1 ? num(r[storeDCol]) : 0,
       storeI: storeICol !== -1 ? num(r[storeICol]) : 0,
@@ -308,18 +306,16 @@ function aggregateBy(rows, keyFn, nameFn) {
   rows.forEach(r => {
     const k = keyFn(r);
     if (!k) return;
-    if (!buckets[k]) buckets[k] = { name: nameFn ? nameFn(r) : k, count: 0, qty: 0, storeD: 0, storeI: 0, labD: 0, labI: 0, powerD: 0, powerI: 0, total: 0, wc: r.wc, mats: new Set(), matCodes: new Set() };
+    if (!buckets[k]) buckets[k] = { name: nameFn ? nameFn(r) : k, count: 0, qty: 0, storeD: 0, storeI: 0, labD: 0, labI: 0, powerD: 0, powerI: 0, total: 0, wc: r.wc, mats: new Set() };
     const b = buckets[k];
     b.count++;
     ['qty','storeD','storeI','labD','labI','powerD','powerI','total'].forEach(f => b[f] += r[f]);
     if (r.mat) b.mats.add(r.mat);
-    if (r.matCode) b.matCodes.add(r.matCode);
   });
   return Object.values(buckets)
     .map(b => ({
       ...b,
       material: Array.from(b.mats).join(', '),
-      matCode: Array.from(b.matCodes).join(', '),
       rate: b.qty ? b.total / b.qty : 0,
       storeDRate: b.qty ? b.storeD / b.qty : 0,
       storeIRate: b.qty ? b.storeI / b.qty : 0,
@@ -511,7 +507,7 @@ function App() {
 
   const COLS_AGG = [
     ['name', view === 'batch' ? 'Batch' : 'Name', 'left'],
-    ...(view === 'batch' ? [['wc', 'Work center', 'left'], ['matCode', 'Material code', 'left']] : []),
+    ...(view === 'batch' ? [['wc', 'Work center', 'left'], ['material', 'Material', 'left']] : []),
     ...(view === 'alloy' ? [['wc', 'Machine', 'left']] : []),
     ...(view === 'wc' ? [['count', 'Entries', 'right']] : []),
     ['qty', 'Qty (kg)', 'right'],
@@ -733,7 +729,7 @@ function DataTable({ cols, rows, fmt, fmtRate, view }) {
                 const isName = key === 'name';
                 const isMono = isName && view === 'batch';
                 const isRateCol = key === 'rate' || key.endsWith('Rate');
-                const isTextCol = key === 'name' || key === 'wc' || key === 'material' || key === 'matCode';
+                const isTextCol = key === 'name' || key === 'wc' || key === 'material';
                 let val;
                 if (isRateCol) val = fmtRate(r[key]);
                 else if (isTextCol) val = r[key] || '-';
@@ -741,7 +737,7 @@ function DataTable({ cols, rows, fmt, fmtRate, view }) {
                 return (
                   <td key={key} className={isMono ? 'mono' : ''} style={{
                     padding: '9px 14px', textAlign: align, borderBottom: '1px solid var(--line)',
-                    whiteSpace: (key === 'material' || key === 'matCode') ? 'normal' : 'nowrap',
+                    whiteSpace: key === 'material' ? 'normal' : 'nowrap',
                     fontWeight: key === 'rate' ? 600 : 400
                   }}>{val}</td>
                 );
