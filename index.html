@@ -97,18 +97,22 @@ const DEPARTMENTS = ['CCP / Mill', 'Coin', 'Coil', 'Cup', 'Case'];
 
 /* ============================================================
    STORAGE (Google Sheet backend, in-memory cache)
+   Batch data is stored as real sheet rows (not one giant JSON
+   blob per date) — a single Sheet cell caps out around 50,000
+   characters, which a few hundred batches can exceed easily.
 ============================================================ */
 const cache = {};
-async function sheetGet(key) {
-  if (Object.prototype.hasOwnProperty.call(cache, key)) return cache[key];
+async function sheetGetMeta(key) {
+  const cacheKey = 'meta:' + key;
+  if (Object.prototype.hasOwnProperty.call(cache, cacheKey)) return cache[cacheKey];
   const res = await fetch(GOOGLE_SHEET_API_URL + '?key=' + encodeURIComponent(key));
   const json = await res.json();
   const val = json && json.value !== undefined ? json.value : null;
-  cache[key] = val;
+  cache[cacheKey] = val;
   return val;
 }
-async function sheetSet(key, value) {
-  cache[key] = value;
+async function sheetSetMeta(key, value) {
+  cache['meta:' + key] = value;
   // Apps Script Web Apps don't send CORS headers on POST responses, so the
   // browser blocks reading them even though the write itself succeeds
   // server-side. no-cors mode fires the request without needing to read
@@ -120,15 +124,28 @@ async function sheetSet(key, value) {
   });
 }
 async function getDateIndex() {
-  const raw = await sheetGet('v2-date-index');
+  const raw = await sheetGetMeta('v3-date-index');
   try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
 }
-async function setDateIndex(list) { await sheetSet('v2-date-index', JSON.stringify(list)); }
+async function setDateIndex(list) { await sheetSetMeta('v3-date-index', JSON.stringify(list)); }
+
 async function getDayRows(dateKey) {
-  const raw = await sheetGet('rows:' + dateKey);
-  try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+  const cacheKey = 'rows:' + dateKey;
+  if (Object.prototype.hasOwnProperty.call(cache, cacheKey)) return cache[cacheKey];
+  const res = await fetch(GOOGLE_SHEET_API_URL + '?action=getRows&date=' + encodeURIComponent(dateKey));
+  const json = await res.json();
+  const rows = (json && json.rows) || [];
+  cache[cacheKey] = rows;
+  return rows;
 }
-async function setDayRows(dateKey, rows) { await sheetSet('rows:' + dateKey, JSON.stringify(rows)); }
+async function setDayRows(dateKey, rows) {
+  cache['rows:' + dateKey] = rows;
+  await fetch(GOOGLE_SHEET_API_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: JSON.stringify({ action: 'setRows', date: dateKey, rows })
+  });
+}
 
 /* ============================================================
    PARSING
@@ -393,30 +410,52 @@ function App() {
     return () => { cancelled = true; };
   }, [selectedDate]);
 
-  const handleFile = useCallback(async (file) => {
+  const [uploadProgress, setUploadProgress] = useState(null);
+
+  const handleFiles = useCallback(async (fileList) => {
+    const files = Array.from(fileList);
+    if (!files.length) return;
     setUploading(true);
+    const loadedLabels = [];
+    const failed = [];
     try {
-      const buf = await file.arrayBuffer();
-      const isPdf = file.name.toLowerCase().endsWith('.pdf');
-      const byDate = await parseWorkbook(buf, isPdf);
-      const dates = Object.keys(byDate);
-      if (!dates.length) throw new Error('No usable rows found in this file.');
       const idx = await getDateIndex();
-      for (const dk of dates) {
-        const existing = await getDayRows(dk).catch(() => []);
-        const merged = existing.filter(r => true).concat(byDate[dk]);
-        await setDayRows(dk, byDate[dk]);
-        if (!idx.includes(dk)) idx.push(dk);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setUploadProgress({ current: i + 1, total: files.length, name: file.name });
+        try {
+          const buf = await file.arrayBuffer();
+          const isPdf = file.name.toLowerCase().endsWith('.pdf');
+          const byDate = await parseWorkbook(buf, isPdf);
+          const dates = Object.keys(byDate);
+          if (!dates.length) throw new Error('No usable rows found.');
+          for (const dk of dates) {
+            await setDayRows(dk, byDate[dk]);
+            if (!idx.includes(dk)) idx.push(dk);
+            loadedLabels.push(keyToLabel(dk));
+          }
+        } catch (e) {
+          failed.push(file.name + ': ' + (e.message || 'failed'));
+        }
       }
       idx.sort().reverse();
       await setDateIndex(idx);
-      showToast('Loaded ' + dates.map(keyToLabel).join(', '));
-      setSelectedDate(dates.sort().reverse()[0]);
+
+      if (loadedLabels.length) {
+        showToast('Loaded ' + loadedLabels.join(', ') + (failed.length ? ' — ' + failed.length + ' file(s) failed' : ''), failed.length > 0 && !loadedLabels.length);
+        setSelectedDate(idx[0]);
+      }
+      if (failed.length && !loadedLabels.length) {
+        showToast(failed.join(' | '), true);
+      } else if (failed.length) {
+        showToast('Some files failed: ' + failed.join(' | '), true);
+      }
       await loadDates();
     } catch (e) {
       showToast(e.message || 'Upload failed.', true);
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   }, [loadDates, showToast]);
 
@@ -478,9 +517,10 @@ function App() {
         search={search} setSearch={setSearch}
         onUploadClick={() => fileInputRef.current && fileInputRef.current.click()}
         uploading={uploading}
+        uploadProgress={uploadProgress}
       />
-      <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.pdf" style={{ display: 'none' }}
-        onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ''; }} />
+      <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.pdf" multiple style={{ display: 'none' }}
+        onChange={e => { if (e.target.files.length) handleFiles(e.target.files); e.target.value = ''; }} />
 
       <main style={{ maxWidth: 1200, margin: '0 auto', padding: '20px 24px 64px' }}>
 
@@ -544,7 +584,7 @@ function App() {
 /* ============================================================
    TOP BAR
 ============================================================ */
-function TopBar({ theme, setTheme, search, setSearch, onUploadClick, uploading }) {
+function TopBar({ theme, setTheme, search, setSearch, onUploadClick, uploading, uploadProgress }) {
   return (
     <header style={{ borderBottom: '1px solid var(--line)', background: 'var(--surface)', position: 'sticky', top: 0, zIndex: 10 }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -576,7 +616,9 @@ function TopBar({ theme, setTheme, search, setSearch, onUploadClick, uploading }
           opacity: uploading ? 0.6 : 1
         }}>
           {uploading ? <span className="spin" style={{ width: 14, height: 14, border: '2px solid var(--line-strong)', borderTopColor: 'var(--accent)', borderRadius: '50%', display: 'inline-block' }} /> : <IconUpload />}
-          {uploading ? 'Uploading…' : 'Upload'}
+          {uploading
+            ? (uploadProgress ? 'Uploading ' + uploadProgress.current + '/' + uploadProgress.total + '…' : 'Uploading…')
+            : 'Upload'}
         </button>
 
         <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} className="focus-ring" aria-label="Toggle dark mode"
