@@ -112,10 +112,10 @@ async function sheetSet(key, value) {
   await fetch(GOOGLE_SHEET_API_URL, { method: 'POST', body: JSON.stringify({ action: 'set', key, value }) });
 }
 async function getDateIndex() {
-  const raw = await sheetGet('date-index');
+  const raw = await sheetGet('v2-date-index');
   try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
 }
-async function setDateIndex(list) { await sheetSet('date-index', JSON.stringify(list)); }
+async function setDateIndex(list) { await sheetSet('v2-date-index', JSON.stringify(list)); }
 async function getDayRows(dateKey) {
   const raw = await sheetGet('rows:' + dateKey);
   try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
@@ -597,15 +597,10 @@ function FilterBar({ dateIndex, selectedDate, setSelectedDate, department, setDe
         {dateIndex.map(d => <option key={d} value={d}>{keyToLabel(d)}</option>)}
       </select>
 
-      <div style={{ display: 'flex', gap: 6, background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 999, padding: 4, flexWrap: 'wrap' }}>
-        {DEPARTMENTS.map(d => (
-          <button key={d} onClick={() => setDepartment(d)} className="focus-ring" style={{
-            padding: '7px 14px', borderRadius: 999, border: 'none', fontWeight: 600, fontSize: 12.5,
-            background: d === department ? 'var(--accent)' : 'transparent',
-            color: d === department ? 'var(--accent-ink)' : 'var(--ink-2)'
-          }}>{d}</button>
-        ))}
-      </div>
+      <select value={department} onChange={e => setDepartment(e.target.value)} className="focus-ring"
+        style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', fontWeight: 600 }}>
+        {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+      </select>
 
       <div style={{ display: 'flex', gap: 4, background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8, padding: 3 }}>
         {[['wc', 'Work center'], ['alloy', 'Alloy'], ['batch', 'Batch']].map(([k, label]) => {
