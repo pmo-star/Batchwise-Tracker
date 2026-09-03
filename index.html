@@ -584,6 +584,12 @@ function TopBar({ theme, setTheme, search, setSearch, onUploadClick, uploading }
           {theme === 'dark' ? <IconSun /> : <IconMoon />}
         </button>
       </div>
+      <div style={{
+        maxWidth: 1200, margin: '0 auto', padding: '0 24px 10px',
+        fontSize: 12, color: 'var(--ink-2)', textAlign: 'right'
+      }}>
+        Only upload the <strong>&ldquo;Batch Wise Cost&rdquo;</strong> sheet — work center, alloy, and batch views are generated automatically from it.
+      </div>
     </header>
   );
 }
