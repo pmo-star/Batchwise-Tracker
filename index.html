@@ -1,4030 +1,745 @@
-<div id="app-root"></div>
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Batchwise Tracker</title>
 <style>
-  #app-root {
-    --bg: #F5F2EC;
+  :root {
+    --bg: #F7F5F1;
     --surface: #FFFFFF;
-    --ink: #211D18;
-    --ink-soft: #6B6255;
-    --line: #E4DDCF;
-    --steel: #2B3038;
-    --steel-soft: #3C434E;
-    --copper: #BE6A34;
-    --copper-soft: #F1DAC4;
-    --forge: #3F6E52;
-    --forge-soft: #DCE9DF;
-    --ember: #C9932F;
-    --ember-soft: #F3E5C2;
-    --radius: 10px;
-
-    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
-    color: var(--ink);
+    --surface-2: #FBFAF7;
+    --ink: #1C1B19;
+    --ink-2: #6B655C;
+    --ink-3: #9A9284;
+    --line: #E7E2D8;
+    --line-strong: #D6CFC0;
+    --accent: #B54E2E;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #F3E2DA;
+    --danger: #A3372F;
+    --danger-soft: #F6E2E0;
+    --radius: 8px;
+    --shadow: none;
+    --focus: 0 0 0 3px rgba(181,78,46,0.28);
+  }
+  html.dark {
+    --bg: #15171A;
+    --surface: #1D2024;
+    --surface-2: #202327;
+    --ink: #ECE9E2;
+    --ink-2: #A19A8C;
+    --ink-3: #746D62;
+    --line: #2B2E33;
+    --line-strong: #383B41;
+    --accent: #D97A52;
+    --accent-ink: #15171A;
+    --accent-soft: #382820;
+    --danger: #E0685F;
+    --danger-soft: #3A2422;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
     background: var(--bg);
-    min-height: 100vh;
-    display: flex;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
+  ::selection { background: var(--accent-soft); }
+  button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
+  button { cursor: pointer; }
+  ::-webkit-scrollbar { height: 8px; width: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+  a { color: var(--accent); }
+
+  .focus-ring:focus-visible { outline: none; box-shadow: var(--focus); border-radius: var(--radius); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .spin { animation: spin 0.7s linear infinite; }
+  .fade-in { animation: fadeIn 0.15s ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spin { animation: none; }
+    .fade-in { animation: none; }
   }
-
-  #app-root * {
-    box-sizing: border-box;
-  }
-
-  .mono {
-    font-family: ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace;
-  }
-
-  .sidebar {
-    width: 250px;
-    background: var(--steel);
-    color: #EDEAE3;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-  }
-
-  .sidebar-header {
-    padding: 22px 20px 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-  }
-
-  .sidebar-title {
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 0.2px;
-    margin: 0;
-  }
-
-  .sidebar-sub {
-    font-size: 11.5px;
-    color: #9FA6AE;
-    margin-top: 3px;
-  }
-
-  .upload-zone {
-    margin: 16px 16px 8px;
-    padding: 16px 12px;
-    border: 1.5px dashed rgba(255,255,255,0.25);
-    border-radius: var(--radius);
-    text-align: center;
-    cursor: pointer;
-    transition: border-color .15s, background .15s;
-  }
-
-  .upload-zone:hover,
-  .upload-zone.dragover {
-    border-color: var(--copper);
-    background: rgba(190,106,52,0.12);
-  }
-
-  .upload-zone svg {
-    opacity: 0.7;
-    margin-bottom: 6px;
-  }
-
-  .upload-zone-text {
-    font-size: 12.5px;
-    color: #C7CCD1;
-    line-height: 1.4;
-  }
-
-  .upload-zone input {
-    display: none;
-  }
-
-  .reset-btn {
-    margin: 4px 16px 8px;
-    padding: 8px 10px;
-    text-align: center;
-    font-size: 11.5px;
-    color: #C7897C;
-    border: 1px solid rgba(200,100,90,0.35);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background .12s;
-  }
-
-  .reset-btn:hover {
-    background: rgba(200,80,70,0.15);
-    color: #E0A79B;
-  }
-
-  .date-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 6px 10px 16px;
-  }
-
-  .date-list-label {
-    font-size: 10.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: #7C838B;
-    padding: 12px 10px 6px;
-  }
-
-  .date-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 9px 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    margin-bottom: 2px;
-    color: #D7DADC;
-    font-size: 13px;
-  }
-
-  .date-item:hover {
-    background: rgba(255,255,255,0.06);
-  }
-
-  .date-item.active {
-    background: var(--copper);
-    color: #fff;
-    font-weight: 600;
-  }
-
-  .date-item .count {
-    font-size: 11px;
-    color: inherit;
-    opacity: 0.75;
-  }
-
-  .date-del {
-    opacity: 0;
-    font-size: 15px;
-    line-height: 1;
-    padding: 2px 6px;
-    border-radius: 5px;
-    transition: opacity .12s, background .12s;
-  }
-
-  .date-item:hover .date-del {
-    opacity: 0.6;
-  }
-
-  .date-del:hover {
-    opacity: 1 !important;
-    background: rgba(255,255,255,0.15);
-  }
-
-  .date-item.active .date-del:hover {
-    background: rgba(255,255,255,0.25);
-  }
-
-  .main {
-    flex: 1;
-    min-width: 0;
-    padding: 26px 34px 60px;
-  }
-
-  .topbar {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-
-  .topbar h1 {
-    font-size: 20px;
-    margin: 0;
-  }
-
-  .topbar .status {
-    font-size: 12px;
-    color: var(--ink-soft);
-  }
-
-  .stat-row {
-    display: flex;
-    gap: 14px;
-    margin-bottom: 26px;
-    flex-wrap: wrap;
-  }
-
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 14px 18px;
-    min-width: 140px;
-  }
-
-  .stat-card .label {
-    font-size: 11px;
-    color: var(--ink-soft);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-  }
-
-  .stat-card .value {
-    font-size: 22px;
-    font-weight: 700;
-    margin-top: 4px;
-  }
-
-  .stat-card.copper .value {
-    color: var(--copper);
-  }
-
-  .stat-card.forge .value {
-    color: var(--forge);
-  }
-
-  .stat-card.ember .value {
-    color: #A87A1E;
-  }
-
-  .empty-state {
-    text-align: center;
-    padding: 90px 20px;
-    color: var(--ink-soft);
-  }
-
-  .empty-state h2 {
-    font-size: 17px;
-    color: var(--ink);
-    margin-bottom: 8px;
-  }
-
-  .empty-state p {
-    font-size: 13px;
-    max-width: 360px;
-    margin: 0 auto;
-    line-height: 1.5;
-  }
-
-  .wc-section {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 20px 22px;
-    margin-bottom: 20px;
-  }
-
-  .wc-section h2 {
-    font-size: 15px;
-    margin: 0 0 4px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .wc-section h2 .bar {
-    width: 4px;
-    height: 15px;
-    background: var(--copper);
-    border-radius: 2px;
-    display: inline-block;
-  }
-
-  .wc-section .wc-sub {
-    font-size: 12px;
-    color: var(--ink-soft);
-    margin-bottom: 14px;
-  }
-
-  .group-section {
-    margin-bottom: 30px;
-  }
-
-  .group-title {
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--steel);
-    margin: 0 0 12px;
-    padding-bottom: 8px;
-    border-bottom: 2px solid var(--steel);
-  }
-
-  .group-empty {
-    background: var(--surface);
-    border: 1px dashed var(--line);
-    border-radius: var(--radius);
-    padding: 18px 20px;
-    color: var(--ink-soft);
-    font-size: 13px;
-    font-style: italic;
-  }
-
-  .dept-tab-row {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-  }
-
-  .dept-tab {
-    padding: 9px 18px;
-    border-radius: 999px;
-    font-size: 13px;
-    font-weight: 600;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    color: var(--ink-soft);
-    cursor: pointer;
-    transition: background .12s, color .12s, border-color .12s;
-  }
-
-  .dept-tab:hover {
-    border-color: var(--copper);
-    color: var(--ink);
-  }
-
-  .dept-tab.active {
-    background: var(--steel);
-    border-color: var(--steel);
-    color: #fff;
-  }
-
-  .toolbar {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 20px;
-  }
-
-  .search-input {
-    flex: 1;
-    max-width: 320px;
-    padding: 9px 14px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    font-size: 13px;
-    background: var(--surface);
-    color: var(--ink);
-  }
-
-  .search-input:focus {
-    outline: none;
-    border-color: var(--copper);
-  }
-
-  .export-btn {
-    padding: 9px 16px;
-    border-radius: 8px;
-    font-size: 12.5px;
-    font-weight: 600;
-    background: var(--forge);
-    color: #fff;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .export-btn:hover {
-    opacity: 0.9;
-  }
-
-  .summary-section {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 18px 20px;
-    margin-bottom: 22px;
-  }
-
-  .trend-title {
-    font-size: 13px;
-    font-weight: 700;
-    margin: 0 0 12px;
-    color: var(--ink);
-  }
-
-  .summary-section table {
-    font-size: 12.5px;
-  }
-
-  .summary-section th {
-    background: var(--steel);
-    color: #EDEAE3;
-    padding: 7px 12px;
-    text-align: left;
-  }
-
-  .summary-section td {
-    padding: 6px 12px;
-    border-top: 1px solid var(--line);
-  }
-
-  canvas {
-    max-height: 320px;
-  }
-
-  .table-wrap {
-    max-height: 300px;
-    overflow-y: auto;
-    margin-top: 14px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-  }
-
-  table {
-    border-collapse: collapse;
-    width: 100%;
-    font-size: 12.5px;
-  }
-
-  th {
-    position: sticky;
-    top: 0;
-    background: var(--steel);
-    color: #EDEAE3;
-    text-align: left;
-    padding: 8px 12px;
-    font-weight: 600;
-  }
-
-  td {
-    padding: 7px 12px;
-    border-top: 1px solid var(--line);
-  }
-
-  td.num {
-    text-align: right;
-  }
-
-  tr:nth-child(even) td {
-    background: #FAF8F3;
-  }
-
-  .batch-code {
-    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-    font-size: 12px;
-  }
-
-  tr.flagged-row td {
-    background: #FBEAE6 !important;
-  }
-
-  .flag-badge {
-    display: inline-block;
-    font-size: 10.5px;
-    font-weight: 600;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: #C0442C;
-    color: #fff;
-    margin-right: 4px;
-    white-space: nowrap;
-  }
-
-  .loading-msg {
-    text-align: center;
-    padding: 60px;
-    color: var(--ink-soft);
-    font-size: 13px;
-  }
-
-  .toast {
-    position: fixed;
-    bottom: 22px;
-    right: 22px;
-    background: var(--steel);
-    color: #fff;
-    padding: 12px 18px;
-    border-radius: 8px;
-    font-size: 13px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
-    opacity: 0;
-    transform: translateY(8px);
-    transition: opacity .2s, transform .2s;
-    pointer-events: none;
-    z-index: 50;
-  }
-
-  .toast.show {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  /* ---- print / PDF export styles ---- */
-  #printArea {
-    display: none;
-  }
-  body.printing #app-root {
-    display: none;
-  }
-  body.printing #printArea {
-    display: block;
-  }
-  #printArea .print-header { margin-bottom: 18px; }
-  #printArea h1 { font-size: 20px; margin: 0 0 4px; color: #211D18; }
-  #printArea .print-sub { font-size: 11px; color: #6B6255; }
-  #printArea h2.print-dept {
-    font-size: 15px; text-transform: uppercase; letter-spacing: 0.6px;
-    border-bottom: 2px solid #2B3038; padding-bottom: 6px; margin: 26px 0 10px;
-    page-break-before: always;
-  }
-  #printArea h2.print-dept:first-of-type { page-break-before: avoid; }
-  #printArea h3.print-wc { font-size: 13px; margin: 16px 0 6px; color: #211D18; }
-  #printArea .print-empty { font-size: 12px; color: #6B6255; font-style: italic; }
-  #printArea table.print-table {
-    width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 10px;
-  }
-  #printArea table.print-table th {
-    background: #2B3038; color: #fff; text-align: left; padding: 5px 8px;
-  }
-  #printArea table.print-table td {
-    padding: 4px 8px; border-bottom: 1px solid #ddd;
-  }
-  #printArea table.print-table td.num { text-align: right; }
-
-  @media print {
-    body.printing #printArea table.print-table {
-      page-break-inside: auto;
-    }
-    body.printing #printArea tr {
-      page-break-inside: avoid;
-    }
-  }
-
 </style>
+</head>
+<body>
+<div id="root"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+<script type="text/babel-jsx" id="app-source">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+}
+
+/* ============================================================
+   CONFIG
+============================================================ */
+const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzkfY8LRSrbi7gsWXYjXYnu_h5C31uPJibO2Nm7sDuNtF493GhTuI8JAj4uAVL5gUvh/exec';
+
+const GROUP_MAP = {
+  ZCCP: 'CCP / Mill', ZMILL: 'CCP / Mill', ZPULV: 'CCP / Mill', ZCH01: 'CCP / Mill',
+  ZCOIN: 'Coin', ZCL01: 'Coil (CL01)', ZCUP: 'Cup', ZCASE: 'Case'
+};
+const DEPARTMENTS = ['CCP / Mill', 'Coin', 'Coil (CL01)', 'Cup', 'Case'];
+
+/* ============================================================
+   STORAGE (Google Sheet backend, in-memory cache)
+============================================================ */
+const cache = {};
+async function sheetGet(key) {
+  if (Object.prototype.hasOwnProperty.call(cache, key)) return cache[key];
+  const res = await fetch(GOOGLE_SHEET_API_URL + '?key=' + encodeURIComponent(key));
+  const json = await res.json();
+  const val = json && json.value !== undefined ? json.value : null;
+  cache[key] = val;
+  return val;
+}
+async function sheetSet(key, value) {
+  cache[key] = value;
+  await fetch(GOOGLE_SHEET_API_URL, { method: 'POST', body: JSON.stringify({ action: 'set', key, value }) });
+}
+async function getDateIndex() {
+  const raw = await sheetGet('date-index');
+  try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+}
+async function setDateIndex(list) { await sheetSet('date-index', JSON.stringify(list)); }
+async function getDayRows(dateKey) {
+  const raw = await sheetGet('rows:' + dateKey);
+  try { return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+}
+async function setDayRows(dateKey, rows) { await sheetSet('rows:' + dateKey, JSON.stringify(rows)); }
+
+/* ============================================================
+   PARSING
+============================================================ */
+function findCol(headers, exact, contains, exclude) {
+  const lower = headers.map(h => (h || '').toString().toLowerCase().trim());
+  if (exact) {
+    for (const name of exact) {
+      const idx = lower.indexOf(name.toLowerCase());
+      if (idx !== -1) return idx;
+    }
+  }
+  if (contains) {
+    for (let i = 0; i < lower.length; i++) {
+      const h = lower[i];
+      if (contains.every(k => h.includes(k)) && !(exclude || []).some(k => h.includes(k))) return i;
+    }
+  }
+  return -1;
+}
+
+function dateToKey(val) {
+  if (typeof val === 'number' && isFinite(val)) {
+    const ms = Date.UTC(1899, 11, 30) + Math.round(val) * 86400000;
+    const d = new Date(ms);
+    return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+  }
+  if (val instanceof Date && !isNaN(val)) {
+    return val.getUTCFullYear() + '-' + String(val.getUTCMonth() + 1).padStart(2, '0') + '-' + String(val.getUTCDate()).padStart(2, '0');
+  }
+  if (typeof val === 'string') {
+    const s = val.trim();
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return m[3] + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0');
+    m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+    const d = new Date(s);
+    if (!isNaN(d)) return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+  }
+  return 'unknown';
+}
+function keyToLabel(key) {
+  if (key === 'unknown') return 'Unknown date';
+  const [y, m, d] = key.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return d + ' ' + months[parseInt(m, 10) - 1] + ' ' + y;
+}
+
+function num(v) { const n = parseFloat(v); return isFinite(n) ? n : 0; }
+
+async function extractRowsFromPdf(arrayBuffer) {
+  const data = new Uint8Array(arrayBuffer);
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+
+  const dataRows = [];
+  let headerRow = null;
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+
+    const rowMap = {};
+    content.items.forEach(item => {
+      const y = Math.round(item.transform[5]);
+      const x = item.transform[4];
+      if (!rowMap[y]) rowMap[y] = [];
+      if (item.str.trim() !== '') rowMap[y].push({ x, str: item.str });
+    });
+
+    const sortedYs = Object.keys(rowMap).map(Number).sort((a, b) => b - a);
+    sortedYs.forEach(y => {
+      const cells = rowMap[y].sort((a, b) => a.x - b.x).map(c => c.str);
+      // title lines and page-number lines never have anywhere near the
+      // full column count, so this alone filters them out reliably.
+      if (cells.length < 10) return;
+      if (cells[0] === 'Company Code') {
+        // repeated header row (appears on every page) — capture once, skip as data
+        if (!headerRow) headerRow = cells;
+        return;
+      }
+      dataRows.push(cells);
+    });
+  }
+
+  if (!headerRow) throw new Error('Could not find the header row in this PDF.');
+  if (!dataRows.length) throw new Error('No data rows found in this PDF.');
+
+  return [headerRow, ...dataRows];
+}
+
+async function parseWorkbook(arrayBuffer, isPdf) {
+  let rows;
+
+  if (isPdf) {
+    rows = await extractRowsFromPdf(arrayBuffer);
+  } else {
+    const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', cellDates: false, cellNF: true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+  }
+
+  if (!rows.length) throw new Error('File is empty.');
+  const headers = rows[0];
+  const dataRows = rows.slice(1).filter(r => r && r.length);
+
+  const locCol = findCol(headers, ['Storage Location'], ['storage', 'location']);
+  const wcCol = findCol(headers, ['Work Center Text'], ['work', 'center'], ['code']);
+  const matCol = findCol(headers, ['Material Group'], ['material', 'group']);
+  const matCodeCol = findCol(headers, ['Material Code'], ['material', 'code'], ['description', 'group']);
+  const batchCol = findCol(headers, ['Batch']);
+  const dateCol = findCol(headers, ['Posting Date'], ['posting', 'date']);
+  const qtyCol = findCol(headers, null, ['qty'], ['unit']);
+  const storeDCol = findCol(headers, ['Store Direct Amount'], ['store', 'direct'], ['rs/kg', 'indirect']);
+  const storeICol = findCol(headers, ['Store Indirect Amount'], ['store', 'indirect'], ['rs/kg']);
+  const powerDCol = findCol(headers, ['Power Direct Amount'], ['power', 'direct'], ['rs/kg', 'indirect']);
+  const powerICol = findCol(headers, ['Power Indirect Amount'], ['power', 'indirect'], ['rs/kg']);
+  const labDCol = findCol(headers, ['Labour Direct Amount'], ['labour', 'direct'], ['rs/kg', 'indirect']);
+  const labICol = findCol(headers, ['Labour Indirect Amount'], ['labour', 'indirect'], ['rs/kg']);
+  const totalCol = findCol(headers, ['Total Amount (Direct + Indirect)', 'Total Amount'], ['total', 'amount'], ['rs/kg', 'direct)', 'indirect)']);
+
+  if (locCol === -1 || wcCol === -1) throw new Error('Could not find Storage Location / Work Center columns in this file.');
+
+  const byDate = {};
+  dataRows.forEach(r => {
+    const dateKey = dateCol !== -1 ? dateToKey(r[dateCol]) : 'unknown';
+    const loc = (r[locCol] || '').toString().trim();
+    const dept = GROUP_MAP[loc] || loc || 'Other';
+    const wc = (r[wcCol] || 'Unknown').toString().trim();
+    const mat = matCol !== -1 ? (r[matCol] || '').toString().trim() : '';
+    const matCode = matCodeCol !== -1 ? (r[matCodeCol] || '').toString().trim() : '';
+    const batch = batchCol !== -1 ? (r[batchCol] || '').toString().trim() : '';
+    const row = {
+      dept, wc, mat: mat || null, matCode: matCode || null, batch: batch || null,
+      qty: qtyCol !== -1 ? num(r[qtyCol]) : 0,
+      storeD: storeDCol !== -1 ? num(r[storeDCol]) : 0,
+      storeI: storeICol !== -1 ? num(r[storeICol]) : 0,
+      labD: labDCol !== -1 ? num(r[labDCol]) : 0,
+      labI: labICol !== -1 ? num(r[labICol]) : 0,
+      powerD: powerDCol !== -1 ? num(r[powerDCol]) : 0,
+      powerI: powerICol !== -1 ? num(r[powerICol]) : 0,
+      total: totalCol !== -1 ? num(r[totalCol]) : 0
+    };
+    if (!byDate[dateKey]) byDate[dateKey] = [];
+    byDate[dateKey].push(row);
+  });
+  return byDate;
+}
+
+/* ============================================================
+   AGGREGATION
+============================================================ */
+function aggregateBy(rows, keyFn, nameFn) {
+  const buckets = {};
+  rows.forEach(r => {
+    const k = keyFn(r);
+    if (!k) return;
+    if (!buckets[k]) buckets[k] = { name: nameFn ? nameFn(r) : k, count: 0, qty: 0, storeD: 0, storeI: 0, labD: 0, labI: 0, powerD: 0, powerI: 0, total: 0, wc: r.wc, matCodes: new Set(), mats: new Set() };
+    const b = buckets[k];
+    b.count++;
+    ['qty','storeD','storeI','labD','labI','powerD','powerI','total'].forEach(f => b[f] += r[f]);
+    if (r.matCode) b.matCodes.add(r.matCode);
+    if (r.mat) b.mats.add(r.mat);
+  });
+  return Object.values(buckets)
+    .map(b => ({
+      ...b,
+      matCode: Array.from(b.matCodes).join(', '),
+      material: Array.from(b.mats).join(', '),
+      rate: b.qty ? b.total / b.qty : 0,
+      storeDRate: b.qty ? b.storeD / b.qty : 0,
+      storeIRate: b.qty ? b.storeI / b.qty : 0,
+      labDRate: b.qty ? b.labD / b.qty : 0,
+      labIRate: b.qty ? b.labI / b.qty : 0,
+      powerDRate: b.qty ? b.powerD / b.qty : 0,
+      powerIRate: b.qty ? b.powerI / b.qty : 0
+    }))
+    .sort((a, b) => b.qty - a.qty);
+}
+
+/* ============================================================
+   SMALL UI PRIMITIVES
+============================================================ */
+function IconSearch() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
+}
+function IconX() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+}
+function IconUpload() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>;
+}
+function IconMoon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+}
+function IconSun() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>;
+}
+
+function Chip({ label, onRemove }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600,
+      fontSize: 12.5, padding: '5px 8px 5px 10px', borderRadius: 999
+    }}>
+      {label}
+      <button onClick={onRemove} className="focus-ring" aria-label={'Remove filter: ' + label}
+        style={{ background: 'none', border: 'none', color: 'inherit', display: 'flex', padding: 2, borderRadius: 999 }}>
+        <IconX />
+      </button>
+    </span>
+  );
+}
+
+/* ============================================================
+   MAIN APP
+============================================================ */
+function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('bwt-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  const [dateIndex, setDates] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [department, setDepartment] = useState('CCP / Mill');
+  const [view, setView] = useState('wc');
+  const [search, setSearch] = useState('');
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [toast, setToast] = useState(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('bwt-theme', theme);
+  }, [theme]);
+
+  const showToast = useCallback((msg, isError) => {
+    setToast({ msg, isError });
+    setTimeout(() => setToast(t => (t && t.msg === msg ? null : t)), isError ? 5000 : 3000);
+  }, []);
+
+  const loadDates = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const idx = await getDateIndex();
+      const sorted = idx.slice().sort().reverse();
+      setDates(sorted);
+      setSelectedDate(prev => (prev && sorted.includes(prev)) ? prev : (sorted[0] || null));
+      if (!sorted.length) setRows([]);
+    } catch (e) {
+      setError('Could not reach the data source. Check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadDates(); }, [loadDates]);
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    let cancelled = false;
+    setLoading(true); setError(null);
+    getDayRows(selectedDate)
+      .then(r => { if (!cancelled) { setRows(r); setLoading(false); } })
+      .catch(() => { if (!cancelled) { setError('Could not load data for this date.'); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [selectedDate]);
+
+  const handleFile = useCallback(async (file) => {
+    setUploading(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const isPdf = file.name.toLowerCase().endsWith('.pdf');
+      const byDate = await parseWorkbook(buf, isPdf);
+      const dates = Object.keys(byDate);
+      if (!dates.length) throw new Error('No usable rows found in this file.');
+      const idx = await getDateIndex();
+      for (const dk of dates) {
+        const existing = await getDayRows(dk).catch(() => []);
+        const merged = existing.filter(r => true).concat(byDate[dk]);
+        await setDayRows(dk, byDate[dk]);
+        if (!idx.includes(dk)) idx.push(dk);
+      }
+      idx.sort().reverse();
+      await setDateIndex(idx);
+      showToast('Loaded ' + dates.map(keyToLabel).join(', '));
+      setSelectedDate(dates.sort().reverse()[0]);
+      await loadDates();
+    } catch (e) {
+      showToast(e.message || 'Upload failed.', true);
+    } finally {
+      setUploading(false);
+    }
+  }, [loadDates, showToast]);
+
+  const deptRows = useMemo(() => (rows || []).filter(r => r.dept === department), [rows, department]);
+  const hasBatch = useMemo(() => deptRows.some(r => r.batch), [deptRows]);
+
+  useEffect(() => {
+    if (view === 'batch' && !hasBatch) setView('wc');
+  }, [hasBatch, view]);
+
+  const aggregated = useMemo(() => {
+    if (view === 'wc') return aggregateBy(deptRows, r => r.wc);
+    if (view === 'alloy') return aggregateBy(
+      deptRows,
+      r => (r.mat || 'Unspecified') + '||' + r.wc,
+      r => r.mat || 'Unspecified'
+    );
+    if (view === 'batch') return aggregateBy(deptRows, r => r.batch);
+    return [];
+  }, [deptRows, view]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return aggregated;
+    const q = search.trim().toLowerCase();
+    return aggregated.filter(r => r.name.toLowerCase().includes(q) || (r.wc || '').toLowerCase().includes(q));
+  }, [aggregated, search]);
+
+  const totals = useMemo(() => {
+    return deptRows.reduce((acc, r) => {
+      acc.qty += r.qty; acc.total += r.total; return acc;
+    }, { qty: 0, total: 0 });
+  }, [deptRows]);
+
+  const activeFilters = [];
+  if (search.trim()) activeFilters.push({ key: 'search', label: 'Search: "' + search.trim() + '"', clear: () => setSearch('') });
+
+  const fmt = n => Math.round(n).toLocaleString('en-IN');
+  const fmtRate = n => n.toFixed(2);
+
+  const COLS_AGG = [
+    ['name', view === 'batch' ? 'Batch' : 'Name', 'left'],
+    ...(view === 'batch' ? [['wc', 'Work center', 'left'], ['material', 'Material', 'left']] : []),
+    ...(view === 'alloy' ? [['wc', 'Machine', 'left'], ['matCode', 'Material code', 'left']] : []),
+    ...(view === 'wc' ? [['count', 'Entries', 'right']] : []),
+    ['qty', 'Qty (kg)', 'right'],
+    ['storeDRate', 'Store direct (Rs/kg)', 'right'],
+    ['storeIRate', 'Store indirect (Rs/kg)', 'right'],
+    ['labDRate', 'Labour direct (Rs/kg)', 'right'],
+    ['labIRate', 'Labour indirect (Rs/kg)', 'right'],
+    ['powerDRate', 'Power direct (Rs/kg)', 'right'],
+    ['powerIRate', 'Power indirect (Rs/kg)', 'right'],
+    ['rate', 'Total (Rs/kg)', 'right']
+  ];
+
+  return (
+    <div style={{ minHeight: '100vh' }}>
+      <TopBar
+        theme={theme} setTheme={setTheme}
+        search={search} setSearch={setSearch}
+        onUploadClick={() => fileInputRef.current && fileInputRef.current.click()}
+        uploading={uploading}
+      />
+      <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.pdf" style={{ display: 'none' }}
+        onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ''; }} />
+
+      <main style={{ maxWidth: 1200, margin: '0 auto', padding: '20px 24px 64px' }}>
+
+        <FilterBar
+          dateIndex={dateIndex} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
+          department={department} setDepartment={setDepartment}
+          view={view} setView={setView} hasBatch={hasBatch}
+        />
+
+        {activeFilters.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '2px 0 16px' }}>
+            {activeFilters.map(f => <Chip key={f.key} label={f.label} onRemove={f.clear} />)}
+            <button onClick={() => activeFilters.forEach(f => f.clear())} className="focus-ring"
+              style={{ background: 'none', border: 'none', color: 'var(--ink-2)', fontSize: 12.5, fontWeight: 600, padding: '4px 6px' }}>
+              Clear all
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && rows && rows.length > 0 && (
+          <StatRow qty={totals.qty} total={totals.total} entries={deptRows.length} fmt={fmt} />
+        )}
+
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden' }}>
+          {loading ? (
+            <LoadingState />
+          ) : error ? (
+            <ErrorState message={error} onRetry={loadDates} />
+          ) : !dateIndex.length ? (
+            <EmptyState
+              title="No data yet"
+              body="Upload a cost-sheet export to see work-center, alloy, and batch breakdowns here."
+              actionLabel="Upload a file"
+              onAction={() => fileInputRef.current && fileInputRef.current.click()}
+            />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              title={search ? 'No matches' : 'No data for this department'}
+              body={search ? 'Try a different search term, or clear the search.' : 'This department has no entries for the selected date.'}
+              actionLabel={search ? 'Clear search' : null}
+              onAction={search ? () => setSearch('') : null}
+            />
+          ) : (
+            <DataTable cols={COLS_AGG} rows={filtered} fmt={fmt} fmtRate={fmtRate} view={view} />
+          )}
+        </div>
+      </main>
+
+      {toast && (
+        <div className="fade-in" style={{
+          position: 'fixed', bottom: 22, right: 22, background: toast.isError ? 'var(--danger)' : 'var(--ink)',
+          color: theme === 'dark' ? 'var(--bg)' : '#fff', padding: '12px 18px', borderRadius: 8, fontSize: 13, maxWidth: 360, zIndex: 50
+        }}>
+          {toast.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   TOP BAR
+============================================================ */
+function TopBar({ theme, setTheme, search, setSearch, onUploadClick, uploading }) {
+  return (
+    <header style={{ borderBottom: '1px solid var(--line)', background: 'var(--surface)', position: 'sticky', top: 0, zIndex: 10 }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexShrink: 0 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--accent)', color: 'var(--accent-ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>B</div>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Batchwise tracker</span>
+        </div>
+
+        <div style={{ flex: 1, maxWidth: 440, position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)', display: 'flex' }}>
+            <IconSearch />
+          </span>
+          <input
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search work center, alloy, or batch"
+            className="focus-ring"
+            style={{
+              width: '100%', padding: '9px 12px 9px 36px', borderRadius: 8, border: '1px solid var(--line)',
+              background: 'var(--surface-2)', color: 'var(--ink)'
+            }}
+          />
+        </div>
+
+        <div style={{ flex: 1 }} />
+
+        <button onClick={onUploadClick} disabled={uploading} className="focus-ring" style={{
+          display: 'flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 8,
+          border: '1px solid var(--line-strong)', background: 'var(--surface)', fontWeight: 600, fontSize: 13,
+          opacity: uploading ? 0.6 : 1
+        }}>
+          {uploading ? <span className="spin" style={{ width: 14, height: 14, border: '2px solid var(--line-strong)', borderTopColor: 'var(--accent)', borderRadius: '50%', display: 'inline-block' }} /> : <IconUpload />}
+          {uploading ? 'Uploading…' : 'Upload'}
+        </button>
+
+        <button onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} className="focus-ring" aria-label="Toggle dark mode"
+          style={{ display: 'flex', padding: 9, borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--surface)' }}>
+          {theme === 'dark' ? <IconSun /> : <IconMoon />}
+        </button>
+      </div>
+    </header>
+  );
+}
+
+/* ============================================================
+   FILTER BAR
+============================================================ */
+function FilterBar({ dateIndex, selectedDate, setSelectedDate, department, setDepartment, view, setView, hasBatch }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, margin: '4px 0 18px' }}>
+      <select value={selectedDate || ''} onChange={e => setSelectedDate(e.target.value)} className="focus-ring"
+        disabled={!dateIndex.length}
+        style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', fontWeight: 500 }}>
+        {dateIndex.length === 0 && <option>No dates yet</option>}
+        {dateIndex.map(d => <option key={d} value={d}>{keyToLabel(d)}</option>)}
+      </select>
+
+      <div style={{ display: 'flex', gap: 6, background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 999, padding: 4, flexWrap: 'wrap' }}>
+        {DEPARTMENTS.map(d => (
+          <button key={d} onClick={() => setDepartment(d)} className="focus-ring" style={{
+            padding: '7px 14px', borderRadius: 999, border: 'none', fontWeight: 600, fontSize: 12.5,
+            background: d === department ? 'var(--accent)' : 'transparent',
+            color: d === department ? 'var(--accent-ink)' : 'var(--ink-2)'
+          }}>{d}</button>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 4, background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8, padding: 3 }}>
+        {[['wc', 'Work center'], ['alloy', 'Alloy'], ['batch', 'Batch']].map(([k, label]) => {
+          const disabled = k === 'batch' && !hasBatch;
+          return (
+            <button key={k} onClick={() => !disabled && setView(k)} disabled={disabled} className="focus-ring" style={{
+              padding: '6px 12px', borderRadius: 6, border: 'none', fontSize: 12.5, fontWeight: 600,
+              background: k === view ? 'var(--surface)' : 'transparent',
+              color: disabled ? 'var(--ink-3)' : (k === view ? 'var(--ink)' : 'var(--ink-2)'),
+              opacity: disabled ? 0.5 : 1, cursor: disabled ? 'not-allowed' : 'pointer'
+            }} title={disabled ? 'No batch numbers in this file' : ''}>{label}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   STAT ROW
+============================================================ */
+function StatRow({ qty, total, entries, fmt }) {
+  const cards = [
+    ['Total qty', fmt(qty) + ' kg'],
+    ['Total cost', '\u20B9' + fmt(total)],
+    ['Entries', fmt(entries)]
+  ];
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
+      {cards.map(([label, val]) => (
+        <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 16px' }}>
+          <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>{label}</div>
+          <div style={{ fontSize: 21, fontWeight: 600, marginTop: 2 }}>{val}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================
+   DATA TABLE
+============================================================ */
+function DataTable({ cols, rows, fmt, fmtRate, view }) {
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 820 }}>
+        <thead>
+          <tr>
+            {cols.map(([key, label, align]) => (
+              <th key={key} style={{
+                textAlign: align, padding: '10px 14px', fontSize: 12, fontWeight: 600,
+                color: 'var(--ink-2)', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap',
+                position: 'sticky', top: 0, background: 'var(--surface)'
+              }}>{label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.name + i} style={{ transition: 'background 0.1s' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              {cols.map(([key, , align]) => {
+                const isName = key === 'name';
+                const isMono = isName && view === 'batch';
+                const isRateCol = key === 'rate' || key.endsWith('Rate');
+                const isTextCol = key === 'name' || key === 'wc' || key === 'material' || key === 'matCode';
+                let val;
+                if (isRateCol) val = fmtRate(r[key]);
+                else if (isTextCol) val = r[key] || '-';
+                else val = fmt(r[key]);
+                return (
+                  <td key={key} className={isMono ? 'mono' : ''} style={{
+                    padding: '9px 14px', textAlign: align, borderBottom: '1px solid var(--line)',
+                    whiteSpace: (key === 'material' || key === 'matCode') ? 'normal' : 'nowrap',
+                    fontWeight: key === 'rate' ? 600 : 400
+                  }}>{val}</td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ============================================================
+   STATES
+============================================================ */
+function LoadingState() {
+  return (
+    <div style={{ padding: '64px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: 'var(--ink-2)' }}>
+      <span className="spin" style={{ width: 22, height: 22, border: '2.5px solid var(--line-strong)', borderTopColor: 'var(--accent)', borderRadius: '50%', display: 'inline-block' }} />
+      <span style={{ fontSize: 13 }}>Loading data…</span>
+    </div>
+  );
+}
+function ErrorState({ message, onRetry }) {
+  return (
+    <div style={{ padding: '56px 20px', textAlign: 'center' }}>
+      <div style={{ fontWeight: 600, marginBottom: 6 }}>Something went wrong</div>
+      <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 16 }}>{message}</div>
+      <button onClick={onRetry} className="focus-ring" style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--line-strong)', background: 'var(--surface)', fontWeight: 600, fontSize: 13 }}>
+        Retry
+      </button>
+    </div>
+  );
+}
+function EmptyState({ title, body, actionLabel, onAction }) {
+  return (
+    <div style={{ padding: '56px 20px', textAlign: 'center' }}>
+      <div style={{ fontWeight: 600, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: actionLabel ? 16 : 0, maxWidth: 340, margin: '0 auto 16px' }}>{body}</div>
+      {actionLabel && (
+        <button onClick={onAction} className="focus-ring" style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'var(--accent-ink)', fontWeight: 600, fontSize: 13 }}>
+          {actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
 
 <script>
 (function() {
-
-  const BUILD_TAG = '2026-09-01-date-fix-v3';
-
-  // Point pdf.js at its worker script (loaded from the same CDN as the
-  // main library) so it runs PDF parsing off the main thread instead of
-  // silently falling back to a slower "fake worker".
-  if (typeof pdfjsLib !== 'undefined') {
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-  }
-
-  const root = document.getElementById('app-root');
-
-  let chartInstances = [];
-  let currentDateKey = null;
-  let currentDeptTab = 'CCP_MILL';
-  let searchTerm = '';
-
-  const DEPT_TABS = [
-    {
-      key: 'CCP_MILL',
-      label: 'CCP / MILL',
-      groups: ['CCP / MILL']
-    },
-    {
-      key: 'COIN',
-      label: 'COIN',
-      groups: ['COIN']
-    },
-    {
-      key: 'COIL',
-      label: 'COIL (CL01)',
-      groups: ['COIL (CL01)']
-    },
-    {
-      key: 'CUP',
-      label: 'CUP',
-      groups: ['CUP']
-    },
-    {
-      key: 'CASE',
-      label: 'CASE',
-      groups: ['CASE']
-    }
-  ];
-
-  function el(tag, attrs, children) {
-    const e = document.createElement(tag);
-
-    if (attrs) {
-      Object.entries(attrs).forEach(([k, v]) => {
-        if (k === 'class') {
-          e.className = v;
-        } else if (k === 'html') {
-          e.innerHTML = v;
-        } else {
-          e.setAttribute(k, v);
-        }
-      });
-    }
-
-    (children || []).forEach(c => e.appendChild(c));
-
-    return e;
-  }
-
-  function fmt(n, dec) {
-    if (
-      n === null ||
-      n === undefined ||
-      isNaN(n)
-    ) {
-      return '-';
-    }
-
-    return Number(n).toLocaleString('en-IN', {
-      maximumFractionDigits: dec || 0
-    });
-  }
-
-  function showToast(msg, isError) {
-
-    let t = document.getElementById('ccp-toast');
-
-    if (!t) {
-      t = el('div', {
-        id: 'ccp-toast',
-        class: 'toast'
-      });
-
-      document.body.appendChild(t);
-    }
-
-    t.textContent = msg;
-
-    t.style.background = isError
-      ? '#8A3324'
-      : '';
-
-    t.classList.add('show');
-
-    clearTimeout(t._timer);
-
-    t._timer = setTimeout(
-      () => t.classList.remove('show'),
-      isError ? 6000 : 5000
-    );
-  }
-
-
-  /* =========================================================
-     STORAGE
-  ========================================================= */
-
-  const hasCloudStorage =
-    typeof window.storage !== 'undefined' &&
-    window.storage !== null;
-
-  // PASTE your deployed Google Apps Script Web App URL here (shared backend for GitHub deployment).
-  const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzkfY8LRSrbi7gsWXYjXYnu_h5C31uPJibO2Nm7sDuNtF493GhTuI8JAj4uAVL5gUvh/exec';
-  const hasSheetBackend = !hasCloudStorage && !!GOOGLE_SHEET_API_URL;
-
-  // in-memory cache so switching department tabs / re-rendering doesn't
-  // re-fetch the same key from the (slow) Google Sheet backend every time.
-  // Cache is invalidated automatically whenever that key is written or deleted.
-  const __sheetCache = {};
-
-
-  async function storageGetRaw(key) {
-
-    if (hasCloudStorage) {
-      try {
-        const r = await window.storage.get(key, false);
-        return r ? r.value : null;
-      } catch (e) {
-        return null;
-      }
-    }
-
-    if (hasSheetBackend) {
-      if (Object.prototype.hasOwnProperty.call(__sheetCache, key)) {
-        return __sheetCache[key];
-      }
-      try {
-        const res = await fetch(GOOGLE_SHEET_API_URL + '?key=' + encodeURIComponent(key));
-        const json = await res.json();
-        const val = json && json.value !== undefined ? json.value : null;
-        __sheetCache[key] = val;
-        return val;
-      } catch (e) {
-        console.error('Sheet backend get failed', e);
-        return null;
-      }
-    }
-
-    try {
-      return localStorage.getItem(key);
-    } catch (e) {
-      return null;
-    }
-  }
-
-
-  async function storageSetRaw(key, value) {
-
-    if (hasCloudStorage) {
-      await window.storage.set(key, value, false);
-      return;
-    }
-
-    if (hasSheetBackend) {
-      __sheetCache[key] = value;
-      await fetch(GOOGLE_SHEET_API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'set', key, value })
-      });
-      return;
-    }
-
-    localStorage.setItem(key, value);
-  }
-
-
-  async function getDateIndex() {
-
-    const raw = await storageGetRaw('date-index');
-
-    try {
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) {
-      return [];
-    }
-  }
-
-
-  async function setDateIndex(list) {
-
-    await storageSetRaw(
-      'date-index',
-      JSON.stringify(list)
-    );
-  }
-
-
-  async function getDayData(dateKey) {
-
-    const raw = await storageGetRaw(
-      'day:' + dateKey
-    );
-
-    try {
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-
-  async function setDayData(dateKey, data) {
-
-    await storageSetRaw(
-      'day:' + dateKey,
-      JSON.stringify(data)
-    );
-  }
-
-
-  async function deleteDayData(dateKey) {
-
-    if (hasCloudStorage) {
-      await window.storage.delete(
-        'day:' + dateKey,
-        false
-      );
-      return;
-    }
-
-    if (hasSheetBackend) {
-      delete __sheetCache['day:' + dateKey];
-      await fetch(GOOGLE_SHEET_API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'delete', key: 'day:' + dateKey })
-      });
-      return;
-    }
-
-    localStorage.removeItem(
-      'day:' + dateKey
-    );
-  }
-
-
-  /* =========================================================
-     STORAGE LOCATION GROUPING
-  ========================================================= */
-
-  const GROUP_ORDER = [
-    'CCP / MILL',
-    'COIN',
-    'COIL (CL01)',
-    'CUP',
-    'CASE'
-  ];
-
-
-  function getGroupForRow(storageLocRaw, wcText) {
-
-    const loc =
-      (storageLocRaw || '')
-        .toString()
-        .toUpperCase();
-
-    if (
-      loc.includes('MILL') ||
-      loc.includes('CCP')
-    ) {
-      return 'CCP / MILL';
-    }
-
-    if (loc.includes('COIN')) {
-      return 'COIN';
-    }
-
-    if (
-      loc.includes('CL01') ||
-      loc.includes('COIL')
-    ) {
-      return 'COIL (CL01)';
-    }
-
-    if (loc.includes('CUP')) {
-      return 'CUP';
-    }
-
-    if (loc.includes('CASE')) {
-      return 'CASE';
-    }
-
-
-    const wc =
-      (wcText || '')
-        .toString()
-        .toUpperCase();
-
-
-    if (
-      wc.includes('MILLING') ||
-      wc.includes('CAST') ||
-      wc.includes('MELT') ||
-      wc.includes('HOLD')
-    ) {
-      return 'CCP / MILL';
-    }
-
-
-    if (
-      wc.includes('RIMMING') ||
-      wc.includes('POLISH') ||
-      wc.includes('MRV') ||
-      wc.includes('COIN') ||
-      wc.includes('SCHULER') ||
-      wc.includes('BAK ANN')
-    ) {
-      return 'COIN';
-    }
-
-
-    if (
-      wc.includes('SLIT') ||
-      wc.includes('PICKLING') ||
-      wc.includes('MAGADH')
-    ) {
-      return 'COIL (CL01)';
-    }
-
-
-    if (wc.includes('CUP')) {
-      return 'CUP';
-    }
-
-
-    if (wc.includes('CASE')) {
-      return 'CASE';
-    }
-
-
-    return 'Other';
-  }
-
-
-  /* =========================================================
-     COLUMN DETECTION
-  ========================================================= */
-
-  function findCol(
-    headers,
-    exactNames,
-    containsAll,
-    excludeContains
-  ) {
-
-    const lower = headers.map(
-      h =>
-        (h || '')
-          .toString()
-          .toLowerCase()
-          .trim()
-    );
-
-
-    if (exactNames) {
-
-      for (const name of exactNames) {
-
-        const idx =
-          lower.indexOf(
-            name.toLowerCase()
-          );
-
-        if (idx !== -1) {
-          return idx;
-        }
-      }
-    }
-
-
-    if (containsAll) {
-
-      for (
-        let i = 0;
-        i < lower.length;
-        i++
-      ) {
-
-        const h = lower[i];
-
-        const hasAll =
-          containsAll.every(
-            kw => h.includes(kw)
-          );
-
-        const hasExcluded =
-          (excludeContains || [])
-            .some(
-              kw => h.includes(kw)
-            );
-
-        if (
-          hasAll &&
-          !hasExcluded
-        ) {
-          return i;
-        }
-      }
-    }
-
-
-    return -1;
-  }
-
-
-  /* =========================================================
-     FIXED EXCEL DATE PARSER
-     
-     IMPORTANT:
-     We DO NOT use:
-       new Date(excelSerial)
-     
-     We DO NOT use:
-       getUTCDate()
-     
-     We DO NOT use:
-       getDate()
-     
-     We use SheetJS's parse_date_code so
-     Excel 08-23-2026 stays 23-Aug-2026.
-  ========================================================= */
-
-  function excelSerialToKey(serial) {
-
-    if (
-      typeof serial !== 'number' ||
-      !isFinite(serial)
-    ) {
-      return null;
-    }
-
-
-    try {
-
-      const parsed =
-        XLSX.SSF.parse_date_code(
-          serial,
-          {
-            date1904: false
-          }
-        );
-
-
-      if (
-        parsed &&
-        parsed.y &&
-        parsed.m &&
-        parsed.d
-      ) {
-
-        return (
-          String(parsed.y).padStart(4, '0') +
-          '-' +
-          String(parsed.m).padStart(2, '0') +
-          '-' +
-          String(parsed.d).padStart(2, '0')
-        );
-      }
-
-    } catch (e) {
-
-      console.warn(
-        'Excel date parse failed:',
-        serial,
-        e
-      );
-    }
-
-
-    return null;
-  }
-
-
-  function parseDateString(s) {
-
-    s = String(s || '').trim();
-
-    if (!s) {
-      return null;
-    }
-
-
-    /*
-      MM-DD-YYYY
-
-      Example:
-      08-23-2026
-      => 2026-08-23
-    */
-
-    let m =
-      s.match(
-        /^(\d{1,2})-(\d{1,2})-(\d{4})$/
-      );
-
-
-    if (m) {
-
-      const a = parseInt(m[1], 10);
-      const b = parseInt(m[2], 10);
-      const year = m[3];
-
-
-      /*
-        SAP export specified as MM-DD-YYYY.
-        Therefore:
-        first = month
-        second = day
-      */
-
-      const month = a;
-      const day = b;
-
-
-      if (
-        month >= 1 &&
-        month <= 12 &&
-        day >= 1 &&
-        day <= 31
-      ) {
-
-        return (
-          year + '-' +
-          String(month).padStart(2, '0') +
-          '-' +
-          String(day).padStart(2, '0')
-        );
-      }
-    }
-
-
-    /*
-      MM/DD/YYYY
-    */
-
-    m =
-      s.match(
-        /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
-      );
-
-
-    if (m) {
-
-      const month =
-        parseInt(m[1], 10);
-
-      const day =
-        parseInt(m[2], 10);
-
-      const year = m[3];
-
-
-      if (
-        month >= 1 &&
-        month <= 12 &&
-        day >= 1 &&
-        day <= 31
-      ) {
-
-        return (
-          year + '-' +
-          String(month).padStart(2, '0') +
-          '-' +
-          String(day).padStart(2, '0')
-        );
-      }
-    }
-
-
-    /*
-      YYYY-MM-DD
-    */
-
-    m =
-      s.match(
-        /^(\d{4})-(\d{1,2})-(\d{1,2})$/
-      );
-
-
-    if (m) {
-
-      const year = m[1];
-
-      const month =
-        parseInt(m[2], 10);
-
-      const day =
-        parseInt(m[3], 10);
-
-
-      if (
-        month >= 1 &&
-        month <= 12 &&
-        day >= 1 &&
-        day <= 31
-      ) {
-
-        return (
-          year + '-' +
-          String(month).padStart(2, '0') +
-          '-' +
-          String(day).padStart(2, '0')
-        );
-      }
-    }
-
-
-    return null;
-  }
-
-
-  function dateToKey(val) {
-
-    /*
-      CASE 1:
-      Excel serial number.
-
-      Example:
-      Excel 45892 etc.
-    */
-
-    if (
-      typeof val === 'number' &&
-      isFinite(val)
-    ) {
-
-      const key =
-        excelSerialToKey(val);
-
-      if (key) {
-        return key;
-      }
-    }
-
-
-    /*
-      CASE 2:
-      String date.
-    */
-
-    if (
-      typeof val === 'string'
-    ) {
-
-      const key =
-        parseDateString(val);
-
-      if (key) {
-        return key;
-      }
-
-
-      /*
-        If SAP gives a textual date
-        with month name, try controlled
-        parsing without relying on timezone
-        for common formats.
-      */
-
-      const cleaned =
-        val.trim();
-
-
-      const match =
-        cleaned.match(
-          /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})$/
-        );
-
-
-      if (match) {
-
-        const monthNames = {
-          jan: 1,
-          january: 1,
-          feb: 2,
-          february: 2,
-          mar: 3,
-          march: 3,
-          apr: 4,
-          april: 4,
-          may: 5,
-          jun: 6,
-          june: 6,
-          jul: 7,
-          july: 7,
-          aug: 8,
-          august: 8,
-          sep: 9,
-          september: 9,
-          oct: 10,
-          october: 10,
-          nov: 11,
-          november: 11,
-          dec: 12,
-          december: 12
-        };
-
-
-        const month =
-          monthNames[
-            match[1].toLowerCase()
-          ];
-
-        const day =
-          parseInt(match[2], 10);
-
-        const year =
-          parseInt(match[3], 10);
-
-
-        if (
-          month &&
-          day >= 1 &&
-          day <= 31
-        ) {
-
-          return (
-            String(year).padStart(4, '0') +
-            '-' +
-            String(month).padStart(2, '0') +
-            '-' +
-            String(day).padStart(2, '0')
-          );
-        }
-      }
-    }
-
-
-    /*
-      CASE 3:
-      Date object.
-
-      This is only a fallback.
-
-      IMPORTANT:
-      We intentionally use the local calendar
-      components here instead of converting
-      the Date through UTC.
-    */
-
-    if (
-      val instanceof Date &&
-      !isNaN(val.getTime())
-    ) {
-
-      return (
-        val.getFullYear() +
-        '-' +
-        String(
-          val.getMonth() + 1
-        ).padStart(2, '0') +
-        '-' +
-        String(
-          val.getDate()
-        ).padStart(2, '0')
-      );
-    }
-
-
-    return 'Unknown';
-  }
-
-
-  function keyToLabel(key) {
-
-    if (
-      !key ||
-      key === 'Unknown'
-    ) {
-      return 'Unknown Date';
-    }
-
-
-    const parts =
-      key.split('-');
-
-
-    if (parts.length !== 3) {
-      return key;
-    }
-
-
-    const y = parts[0];
-    const m = parts[1];
-    const d = parts[2];
-
-
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ];
-
-
-    const monthIndex =
-      parseInt(m, 10) - 1;
-
-
-    if (
-      monthIndex < 0 ||
-      monthIndex > 11
-    ) {
-      return key;
-    }
-
-
-    return (
-      d +
-      ' ' +
-      months[monthIndex] +
-      ' ' +
-      y
-    );
-  }
-
-
-  /* =========================================================
-     WORKBOOK PARSER
-     
-     KEY CHANGE:
-     
-     cellDates: FALSE
-     
-     This keeps Excel dates as their original
-     serial values, allowing parse_date_code()
-     to decode them without timezone shifting.
-  ========================================================= */
-
-  async function extractRowsFromPdf(arrayBuffer) {
-
-    const data =
-      new Uint8Array(arrayBuffer);
-
-
-    const pdf =
-      await pdfjsLib.getDocument(
-        { data }
-      ).promise;
-
-
-    const dataRows = [];
-    let headerRow = null;
-
-
-    for (let p = 1; p <= pdf.numPages; p++) {
-
-      const page =
-        await pdf.getPage(p);
-
-      const content =
-        await page.getTextContent();
-
-
-      // group text items into rows by their (rounded) y position,
-      // then sort left-to-right by x — each PDF text item is already
-      // a full column value (SAP's own text-run boundaries), so this
-      // reconstructs the original table with no ambiguity.
-      const rowMap = {};
-
-      content.items.forEach(item => {
-
-        const y =
-          Math.round(item.transform[5]);
-
-        const x =
-          item.transform[4];
-
-        if (!rowMap[y]) {
-          rowMap[y] = [];
-        }
-
-        if (item.str.trim() !== '') {
-          rowMap[y].push({ x, str: item.str });
-        }
-      });
-
-
-      const sortedYs =
-        Object.keys(rowMap)
-          .map(Number)
-          .sort((a, b) => b - a);
-
-
-      sortedYs.forEach(y => {
-
-        const cells =
-          rowMap[y]
-            .sort((a, b) => a.x - b.x)
-            .map(c => c.str);
-
-
-        // title lines and page-number lines never have the full
-        // column count, so this alone filters them out reliably.
-        if (cells.length < 10) {
-          return;
-        }
-
-        if (cells[0] === 'Company Code') {
-          // this is a repeated header row (appears on every page) —
-          // capture it once, but don't treat it as data.
-          if (!headerRow) {
-            headerRow = cells;
-          }
-          return;
-        }
-
-        dataRows.push(cells);
-      });
-    }
-
-
-    if (!headerRow) {
-      throw new Error(
-        'Could not find the header row in this PDF.'
-      );
-    }
-
-    if (!dataRows.length) {
-      throw new Error(
-        'No data rows found in this PDF.'
-      );
-    }
-
-
-    return [headerRow, ...dataRows];
-  }
-
-
-  async function parseWorkbook(arrayBuffer, isPdf) {
-
-    let rows;
-
-    if (isPdf) {
-
-      rows =
-        await extractRowsFromPdf(
-          arrayBuffer
-        );
-
-    } else {
-
-      const wb =
-        XLSX.read(
-          new Uint8Array(arrayBuffer),
-          {
-            type: 'array',
-
-            /*
-              VERY IMPORTANT:
-              Do not let SheetJS convert Excel
-              serial dates into JavaScript Date.
-            */
-            cellDates: false,
-
-            cellNF: true
-          }
-        );
-
-
-      const sheet =
-        wb.Sheets[
-          wb.SheetNames[0]
-        ];
-
-
-      rows =
-        XLSX.utils.sheet_to_json(
-          sheet,
-          {
-            header: 1,
-            raw: true,
-            defval: null
-          }
-        );
-    }
-
-
-    if (!rows.length) {
-      throw new Error(
-        'File is empty'
-      );
-    }
-
-
-    const headers =
-      rows[0];
-
-
-    const dataRows =
-      rows
-        .slice(1)
-        .filter(
-          r =>
-            r &&
-            r.length
-        );
-
-
-    const wcCol =
-      findCol(
-        headers,
-        ['Work Center Text'],
-        ['work', 'center'],
-        ['code']
-      );
-
-
-    const batchCol =
-      findCol(
-        headers,
-        ['Batch']
-      );
-
-
-    const qtyCol =
-      findCol(
-        headers,
-        null,
-        ['qty'],
-        ['unit']
-      );
-
-
-    const amtCol =
-      findCol(
-        headers,
-        [
-          'Total Amount (Direct + Indirect)'
-        ],
-        ['total', 'amount'],
-        ['rs/kg']
-      );
-
-
-    const timeCol =
-      findCol(
-        headers,
-        ['Batch Run Time (in Min)'],
-        ['run', 'time'],
-        ['day']
-      );
-
-
-    const prodCol =
-      findCol(
-        headers,
-        ['Material Code Description'],
-        ['description']
-      );
-
-
-    const dateCol =
-      findCol(
-        headers,
-        ['Posting Date'],
-        ['posting', 'date']
-      );
-
-
-    const locCol =
-      findCol(
-        headers,
-        ['Storage Location'],
-        ['storage', 'location']
-      );
-
-
-    if (
-      wcCol === -1 ||
-      batchCol === -1
-    ) {
-
-      throw new Error(
-        'Could not find Work Center / Batch columns in this file.'
-      );
-    }
-
-
-    if (dateCol === -1) {
-
-      throw new Error(
-        'Could not find Posting Date column in this file.'
-      );
-    }
-
-
-    const byDate = {};
-
-
-    dataRows.forEach(r => {
-
-      const rawDate =
-        r[dateCol];
-
-
-      const dateKey =
-        dateToKey(rawDate);
-
-
-      const wc =
-        (
-          r[wcCol] ||
-          'Unknown'
-        )
-          .toString()
-          .trim();
-
-
-      const batch =
-        (
-          r[batchCol] ||
-          'Unknown'
-        )
-          .toString()
-          .trim();
-
-
-      let qty = 0;
-
-
-      if (qtyCol !== -1) {
-
-        qty =
-          parseFloat(
-            (
-              r[qtyCol] ||
-              '0'
-            )
-              .toString()
-              .trim()
-          ) || 0;
-      }
-
-
-      const amt =
-        amtCol !== -1
-          ? (
-              parseFloat(
-                r[amtCol]
-              ) || 0
-            )
-          : 0;
-
-
-      const time =
-        timeCol !== -1
-          ? (
-              parseFloat(
-                r[timeCol]
-              ) || 0
-            )
-          : 0;
-
-
-      const product =
-        prodCol !== -1
-          ? (
-              r[prodCol] ||
-              ''
-            )
-              .toString()
-              .trim()
-          : '';
-
-
-      const group =
-        getGroupForRow(
-          locCol !== -1
-            ? r[locCol]
-            : null,
-          wc
-        );
-
-
-      if (!byDate[dateKey]) {
-        byDate[dateKey] = {};
-      }
-
-
-      if (!byDate[dateKey][wc]) {
-        byDate[dateKey][wc] = {};
-      }
-
-
-      if (
-        !byDate[dateKey][wc][batch]
-      ) {
-
-        byDate[dateKey][wc][batch] = {
-          qty: 0,
-          amt: 0,
-          time: 0,
-          products: [],
-          group
-        };
-      }
-
-
-      const d =
-        byDate[
-          dateKey
-        ][
-          wc
-        ][
-          batch
-        ];
-
-
-      d.qty += qty;
-      d.amt += amt;
-      d.time += time;
-      d.group = group;
-
-
-      if (
-        product &&
-        !d.products.includes(product)
-      ) {
-
-        d.products.push(
-          product
-        );
-      }
-
-    });
-
-
-    /*
-      Debug information:
-      Check browser console after upload.
-    */
-
-    console.log(
-      'Parsed Posting Dates:',
-      Object.keys(byDate)
-    );
-
-
-    return byDate;
-  }
-
-
-  /* =========================================================
-     UPLOAD
-  ========================================================= */
-
-  async function handleFile(file) {
-
-    showToast(
-      'Reading ' +
-      file.name +
-      ' …'
-    );
-
-
-    try {
-
-      const buf =
-        await file.arrayBuffer();
-
-
-      const isPdf =
-        file.name.toLowerCase().endsWith('.pdf');
-
-
-      const byDate =
-        await parseWorkbook(buf, isPdf);
-
-
-      const dates =
-        Object.keys(byDate);
-
-
-      if (!dates.length) {
-
-        throw new Error(
-          'No valid Posting Date records found.'
-        );
-      }
-
-
-      const idx =
-        await getDateIndex();
-
-
-      for (
-        const dateKey of dates
-      ) {
-
-        const existing =
-          (
-            await getDayData(
-              dateKey
-            )
-          ) || {
-            workCenters: {},
-            fileNames: []
-          };
-
-
-        const incoming =
-          byDate[dateKey];
-
-
-        Object.entries(
-          incoming
-        ).forEach(
-          ([wc, batches]) => {
-
-            if (
-              !existing.workCenters[wc]
-            ) {
-
-              existing.workCenters[wc] =
-                {};
-            }
-
-
-            Object.entries(
-              batches
-            ).forEach(
-              ([batch, vals]) => {
-
-                existing
-                  .workCenters[wc][batch] =
-                  vals;
-              }
-            );
-          }
-        );
-
-
-        if (
-          !existing.fileNames.includes(
-            file.name
-          )
-        ) {
-
-          existing.fileNames.push(
-            file.name
-          );
-        }
-
-
-        existing.updatedAt =
-          new Date().toISOString();
-
-
-        await setDayData(
-          dateKey,
-          existing
-        );
-
-
-        if (
-          !idx.includes(dateKey)
-        ) {
-
-          idx.push(dateKey);
-        }
-      }
-
-
-      idx.sort().reverse();
-
-
-      await setDateIndex(idx);
-
-
-      showToast(
-        'Detected date(s): ' +
-        dates.join(', ') +
-        ' — saved as ' +
-        dates
-          .map(keyToLabel)
-          .join(', ')
-      );
-
-
-      currentDateKey =
-        dates[0];
-
-
-      await renderAll();
-
-    } catch (err) {
-
-      console.error(err);
-
-      showToast(
-        'Upload failed: ' +
-        err.message,
-        true
-      );
-    }
-  }
-
-
-  /* =========================================================
-     RENDER
-  ========================================================= */
-
-  async function renderAll() {
-
-    root.innerHTML = '';
-
-
-    const idx =
-      await getDateIndex();
-
-
-    const sidebar =
-      el(
-        'div',
-        {
-          class: 'sidebar'
-        }
-      );
-
-
-    const header =
-      el(
-        'div',
-        {
-          class: 'sidebar-header'
-        },
-        [
-          el(
-            'p',
-            {
-              class: 'sidebar-title'
-            },
-            [
-              document.createTextNode(
-                'Batch Tracker'
-              )
-            ]
-          ),
-
-          el(
-            'p',
-            {
-              class: 'sidebar-sub'
-            },
-            [
-              document.createTextNode(
-                'Work center wise production log'
-              )
-            ]
-          ),
-
-          el(
-            'p',
-            {
-              class: 'sidebar-sub',
-              style:
-                'margin-top:4px;opacity:0.7;'
-            },
-            [
-              document.createTextNode(
-                hasCloudStorage
-                  ? 'Synced to Claude cloud storage'
-                  : hasSheetBackend
-                    ? 'Synced to shared Google Sheet'
-                    : 'Saved in this browser only'
-              )
-            ]
-          ),
-
-          el(
-            'p',
-            {
-              class: 'sidebar-sub',
-              style:
-                'margin-top:2px;opacity:0.4;font-size:10px;'
-            },
-            [
-              document.createTextNode(
-                'build ' +
-                BUILD_TAG
-              )
-            ]
-          )
-        ]
-      );
-
-
-    sidebar.appendChild(
-      header
-    );
-
-
-    const uploadZone =
-      el(
-        'div',
-        {
-          class: 'upload-zone',
-          id: 'uploadZone'
-        }
-      );
-
-
-    uploadZone.innerHTML =
-      '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EDEAE3" stroke-width="1.6">' +
-      '<path d="M12 16V4M12 4l-4 4M12 4l4 4"/>' +
-      '<path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>' +
-      '</svg>' +
-      '<div class="upload-zone-text">' +
-      'Upload new day<br>(.xlsx or .pdf export)' +
-      '</div>';
-
-
-    const fileInput =
-      el(
-        'input',
-        {
-          type: 'file',
-          accept: '.xlsx,.xls,.pdf',
-          id: 'fileInput'
-        }
-      );
-
-
-    uploadZone.appendChild(
-      fileInput
-    );
-
-
-    uploadZone.addEventListener(
-      'click',
-      () => fileInput.click()
-    );
-
-
-    uploadZone.addEventListener(
-      'dragover',
-      e => {
-        e.preventDefault();
-        uploadZone.classList.add(
-          'dragover'
-        );
-      }
-    );
-
-
-    uploadZone.addEventListener(
-      'dragleave',
-      () =>
-        uploadZone.classList.remove(
-          'dragover'
-        )
-    );
-
-
-    uploadZone.addEventListener(
-      'drop',
-      e => {
-
-        e.preventDefault();
-
-        uploadZone.classList.remove(
-          'dragover'
-        );
-
-
-        if (
-          e.dataTransfer.files.length
-        ) {
-
-          handleFile(
-            e.dataTransfer.files[0]
-          );
-        }
-      }
-    );
-
-
-    fileInput.addEventListener(
-      'change',
-      e => {
-
-        if (
-          e.target.files.length
-        ) {
-
-          handleFile(
-            e.target.files[0]
-          );
-        }
-      }
-    );
-
-
-    sidebar.appendChild(
-      uploadZone
-    );
-
-
-    // "Clear all data" button removed entirely: data is now shared across
-    // departments via the Google Sheet backend, so a one-click global wipe
-    // is too risky to expose in the UI.
-
-
-    const dateList =
-      el(
-        'div',
-        {
-          class: 'date-list'
-        }
-      );
-
-
-    if (idx.length) {
-
-      dateList.appendChild(
-        el(
-          'div',
-          {
-            class: 'date-list-label'
-          },
-          [
-            document.createTextNode(
-              'Dates'
-            )
-          ]
-        )
-      );
-
-
-      const allItem =
-        el(
-          'div',
-          {
-            class:
-              'date-item' +
-              (
-                currentDateKey === 'ALL'
-                  ? ' active'
-                  : ''
-              )
-          },
-          [
-            document.createTextNode(
-              'All dates (combined)'
-            )
-          ]
-        );
-
-
-      allItem.addEventListener(
-        'click',
-        () => {
-
-          currentDateKey =
-            'ALL';
-
-          renderAll();
-        }
-      );
-
-
-      // "All dates (combined)" option disabled for now.
-      // dateList.appendChild(
-      //   allItem
-      // );
-
-
-      for (
-        const dateKey of idx
-      ) {
-
-        const item =
-          el(
-            'div',
-            {
-              class:
-                'date-item' +
-                (
-                  currentDateKey === dateKey
-                    ? ' active'
-                    : ''
-                )
-            }
-          );
-
-
-        const label =
-          el(
-            'span',
-            {},
-            [
-              document.createTextNode(
-                keyToLabel(
-                  dateKey
-                )
-              )
-            ]
-          );
-
-
-        item.appendChild(
-          label
-        );
-
-
-        const delBtn =
-          el(
-            'span',
-            {
-              class: 'date-del',
-              title: 'Delete this date'
-            },
-            [
-              document.createTextNode(
-                '\u00D7'
-              )
-            ]
-          );
-
-
-        delBtn.addEventListener(
-          'click',
-          async e => {
-
-            e.stopPropagation();
-
-
-            if (
-              !confirm(
-                'Delete all data for ' +
-                keyToLabel(dateKey) +
-                '? This cannot be undone.'
-              )
-            ) {
-              return;
-            }
-
-
-            try {
-
-              const idx2 =
-                await getDateIndex();
-
-
-              const newIdx =
-                idx2.filter(
-                  d => d !== dateKey
-                );
-
-
-              await setDateIndex(
-                newIdx
-              );
-
-
-              await deleteDayData(
-                dateKey
-              );
-
-
-              if (
-                currentDateKey === dateKey
-              ) {
-
-                currentDateKey =
-                  newIdx.length
-                    ? newIdx[0]
-                    : null;
-              }
-
-
-              showToast(
-                'Deleted ' +
-                keyToLabel(dateKey)
-              );
-
-
-              renderAll();
-
-            } catch (err) {
-
-              console.error(err);
-
-              showToast(
-                'Could not delete: ' +
-                err.message,
-                true
-              );
-            }
-          }
-        );
-
-
-        item.appendChild(
-          delBtn
-        );
-
-
-        item.addEventListener(
-          'click',
-          () => {
-
-            currentDateKey =
-              dateKey;
-
-            renderAll();
-          }
-        );
-
-
-        dateList.appendChild(
-          item
-        );
-      }
-
-
-      if (!currentDateKey) {
-        currentDateKey =
-          idx[0];
-      }
-
-    } else {
-
-      dateList.appendChild(
-        el(
-          'div',
-          {
-            class:
-              'date-list-label'
-          },
-          [
-            document.createTextNode(
-              'No data yet'
-            )
-          ]
-        )
-      );
-    }
-
-
-    sidebar.appendChild(
-      dateList
-    );
-
-
-    root.appendChild(
-      sidebar
-    );
-
-
-    const main =
-      el(
-        'div',
-        {
-          class: 'main'
-        }
-      );
-
-
-    root.appendChild(
-      main
-    );
-
-
-    if (!idx.length) {
-
-      main.appendChild(
-        el(
-          'div',
-          {
-            class: 'empty-state'
-          },
-          [
-            el(
-              'h2',
-              {},
-              [
-                document.createTextNode(
-                  'No data uploaded yet'
-                )
-              ]
-            ),
-
-            el(
-              'p',
-              {},
-              [
-                document.createTextNode(
-                  'Upload a SAP export (.xlsx) using the panel on the left. Charts and tables for every work center will appear here automatically, and stay saved for next time.'
-                )
-              ]
-            )
-          ]
-        )
-      );
-
-
-      return;
-    }
-
-
-    let grouped;
-    let label;
-    let fileNames = [];
-
-
-    if (
-      currentDateKey === 'ALL'
-    ) {
-
-      grouped = {};
-
-
-      for (
-        const dateKey of idx
-      ) {
-
-        const d =
-          await getDayData(
-            dateKey
-          );
-
-
-        if (!d) {
-          continue;
-        }
-
-
-        Object.entries(
-          d.workCenters
-        ).forEach(
-          ([wc, batches]) => {
-
-            if (!grouped[wc]) {
-              grouped[wc] = {};
-            }
-
-
-            Object.entries(
-              batches
-            ).forEach(
-              ([batch, vals]) => {
-
-                grouped[wc][batch] =
-                  vals;
-              }
-            );
-          }
-        );
-      }
-
-
-      label =
-        'All dates combined (' +
-        idx.length +
-        ' days)';
-
-    } else {
-
-      const d =
-        await getDayData(
-          currentDateKey
-        );
-
-
-      grouped =
-        d
-          ? d.workCenters
-          : {};
-
-
-      label =
-        keyToLabel(
-          currentDateKey
-        );
-
-
-      fileNames =
-        d
-          ? d.fileNames
-          : [];
-    }
-
-
-    const bucketed = {};
-
-
-    GROUP_ORDER.forEach(
-      g => {
-        bucketed[g] = {};
-      }
-    );
-
-
-    const otherBucket = {};
-
-
-    Object.entries(
-      grouped
-    ).forEach(
-      ([wc, batches]) => {
-
-        const sample =
-          Object.values(
-            batches
-          )[0];
-
-
-        const g =
-          (
-            sample &&
-            sample.group &&
-            GROUP_ORDER.includes(
-              sample.group
-            )
-          )
-            ? sample.group
-            : getGroupForRow(
-                null,
-                wc
-              );
-
-
-        const target =
-          GROUP_ORDER.includes(g)
-            ? bucketed[g]
-            : otherBucket;
-
-
-        target[wc] =
-          batches;
-      }
-    );
-
-
-    const activeTab =
-      DEPT_TABS.find(
-        t =>
-          t.key ===
-          currentDeptTab
-      ) ||
-      DEPT_TABS[0];
-
-
-    const groupsToRender =
-      activeTab.groups.slice();
-
-
-    let totalQty = 0;
-    let totalAmt = 0;
-    let totalTime = 0;
-    let batchCount = 0;
-    let wcCount = 0;
-
-
-    groupsToRender.forEach(
-      groupName => {
-
-        const wcMap =
-          groupName === 'Other'
-            ? otherBucket
-            : bucketed[groupName];
-
-
-        Object.values(
-          wcMap
-        ).forEach(
-          batches => {
-
-            wcCount++;
-
-
-            Object.values(
-              batches
-            ).forEach(v => {
-
-              totalQty += v.qty;
-              totalAmt += v.amt;
-              totalTime += v.time;
-
-              batchCount++;
-            });
-          }
-        );
-      }
-    );
-
-
-    const topbar =
-      el(
-        'div',
-        {
-          class: 'topbar'
-        },
-        [
-          el(
-            'h1',
-            {},
-            [
-              document.createTextNode(
-                label
-              )
-            ]
-          ),
-
-          el(
-            'div',
-            {
-              class: 'status'
-            },
-            [
-              document.createTextNode(
-                fileNames.length
-                  ? 'Source: ' +
-                    fileNames.join(', ')
-                  : ''
-              )
-            ]
-          )
-        ]
-      );
-
-
-    main.appendChild(
-      topbar
-    );
-
-
-    const statRow =
-      el(
-        'div',
-        {
-          class: 'stat-row'
-        },
-        [
-          statCard(
-            'Total Qty',
-            fmt(totalQty) +
-            ' kg',
-            'copper'
-          ),
-
-          statCard(
-            'Total Amount',
-            '\u20B9' +
-            fmt(totalAmt),
-            'forge'
-          ),
-
-          statCard(
-            'Total Run Time',
-            fmt(totalTime, 1) +
-            ' min',
-            'ember'
-          ),
-
-          statCard(
-            'Batches',
-            fmt(batchCount),
-            ''
-          ),
-
-          statCard(
-            'Work Centers',
-            fmt(wcCount),
-            ''
-          )
-        ]
-      );
-
-
-    main.appendChild(
-      statRow
-    );
-
-
-    /* =====================================================
-       DEPARTMENT TABS
-    ===================================================== */
-
-    const deptTabRow =
-      el(
-        'div',
-        {
-          class: 'dept-tab-row'
-        }
-      );
-
-
-    DEPT_TABS.forEach(
-      tab => {
-
-        const btn =
-          el(
-            'div',
-            {
-              class:
-                'dept-tab' +
-                (
-                  currentDeptTab === tab.key
-                    ? ' active'
-                    : ''
-                )
-            },
-            [
-              document.createTextNode(
-                tab.label
-              )
-            ]
-          );
-
-
-        btn.addEventListener(
-          'click',
-          () => {
-
-            currentDeptTab =
-              tab.key;
-
-            renderAll();
-          }
-        );
-
-
-        deptTabRow.appendChild(
-          btn
-        );
-      }
-    );
-
-
-    main.appendChild(
-      deptTabRow
-    );
-
-
-    /* =====================================================
-       TOOLBAR
-    ===================================================== */
-
-    const toolbar =
-      el(
-        'div',
-        {
-          class: 'toolbar'
-        }
-      );
-
-
-    const searchInput =
-      el(
-        'input',
-        {
-          type: 'text',
-          class: 'search-input',
-          placeholder:
-            'Search batch number…',
-          value: searchTerm
-        }
-      );
-
-
-    searchInput.addEventListener(
-      'input',
-      e => {
-
-        searchTerm =
-          e.target.value
-            .trim()
-            .toUpperCase();
-
-
-        applySearchFilter();
-      }
-    );
-
-
-    toolbar.appendChild(
-      searchInput
-    );
-
-
-    const exportBtn =
-      el(
-        'div',
-        {
-          class: 'export-btn'
-        },
-        [
-          document.createTextNode(
-            'Export PDF'
-          )
-        ]
-      );
-
-
-    exportBtn.addEventListener(
-      'click',
-      () =>
-        exportDeptPdf(
-          activeTab,
-          groupsToRender,
-          bucketed,
-          otherBucket,
-          label
-        )
-    );
-
-
-    toolbar.appendChild(
-      exportBtn
-    );
-
-
-    main.appendChild(
-      toolbar
-    );
-
-
-    chartInstances.forEach(
-      c => c.destroy()
-    );
-
-
-    chartInstances = [];
-
-
-    let chartIdx = 0;
-
-
-    /* =====================================================
-       WORK CENTER SUMMARY
-    ===================================================== */
-
-    const summaryRows = [];
-
-
-    groupsToRender.forEach(
-      groupName => {
-
-        const wcMap =
-          groupName === 'Other'
-            ? otherBucket
-            : bucketed[groupName];
-
-
-        Object.entries(
-          wcMap
-        ).forEach(
-          ([wc, batches]) => {
-
-            let q = 0;
-            let a = 0;
-            let t = 0;
-            let n = 0;
-
-
-            Object.values(
-              batches
-            ).forEach(v => {
-
-              q += v.qty;
-              a += v.amt;
-              t += v.time;
-              n++;
-            });
-
-
-            summaryRows.push({
-              wc,
-              qty: q,
-              amt: a,
-              time: t,
-              batches: n
-            });
-          }
-        );
-      }
-    );
-
-
-    if (summaryRows.length) {
-
-      summaryRows.sort(
-        (a, b) =>
-          b.qty - a.qty
-      );
-
-
-      const summarySection =
-        el(
-          'div',
-          {
-            class:
-              'summary-section'
-          }
-        );
-
-
-      summarySection.appendChild(
-        el(
-          'h3',
-          {
-            class:
-              'trend-title'
-          },
-          [
-            document.createTextNode(
-              activeTab.label +
-              ' — work center summary'
-            )
-          ]
-        )
-      );
-
-
-      const sTable =
-        el(
-          'table',
-          {},
-          [
-            el(
-              'thead',
-              {},
-              [
-                el(
-                  'tr',
-                  {},
-                  [
-                    el(
-                      'th',
-                      {},
-                      [
-                        document.createTextNode(
-                          'Work Center'
-                        )
-                      ]
-                    ),
-
-                    el(
-                      'th',
-                      {},
-                      [
-                        document.createTextNode(
-                          'Batches'
-                        )
-                      ]
-                    ),
-
-                    el(
-                      'th',
-                      {},
-                      [
-                        document.createTextNode(
-                          'Qty (KG)'
-                        )
-                      ]
-                    ),
-
-                    el(
-                      'th',
-                      {},
-                      [
-                        document.createTextNode(
-                          'Amount (Rs)'
-                        )
-                      ]
-                    ),
-
-                    el(
-                      'th',
-                      {},
-                      [
-                        document.createTextNode(
-                          'Time (min)'
-                        )
-                      ]
-                    )
-                  ]
-                )
-              ]
-            )
-          ]
-        );
-
-
-      const sBody =
-        el(
-          'tbody',
-          {}
-        );
-
-
-      summaryRows.forEach(
-        r => {
-
-          sBody.appendChild(
-            el(
-              'tr',
-              {},
-              [
-                el(
-                  'td',
-                  {},
-                  [
-                    document.createTextNode(
-                      r.wc
-                    )
-                  ]
-                ),
-
-                el(
-                  'td',
-                  {
-                    class: 'num'
-                  },
-                  [
-                    document.createTextNode(
-                      fmt(r.batches)
-                    )
-                  ]
-                ),
-
-                el(
-                  'td',
-                  {
-                    class: 'num'
-                  },
-                  [
-                    document.createTextNode(
-                      fmt(r.qty)
-                    )
-                  ]
-                ),
-
-                el(
-                  'td',
-                  {
-                    class: 'num'
-                  },
-                  [
-                    document.createTextNode(
-                      fmt(r.amt)
-                    )
-                  ]
-                ),
-
-                el(
-                  'td',
-                  {
-                    class: 'num'
-                  },
-                  [
-                    document.createTextNode(
-                      fmt(r.time, 1)
-                    )
-                  ]
-                )
-              ]
-            )
-          );
-        }
-      );
-
-
-      sTable.appendChild(
-        sBody
-      );
-
-
-      summarySection.appendChild(
-        sTable
-      );
-
-
-      main.appendChild(
-        summarySection
-      );
-    }
-
-
-    /* =====================================================
-       GROUPS
-    ===================================================== */
-
-    groupsToRender.forEach(
-      groupName => {
-
-        const wcMap =
-          groupName === 'Other'
-            ? otherBucket
-            : bucketed[groupName];
-
-
-        const groupSection =
-          el(
-            'div',
-            {
-              class:
-                'group-section'
-            }
-          );
-
-
-        groupSection.appendChild(
-          el(
-            'h1',
-            {
-              class:
-                'group-title'
-            },
-            [
-              document.createTextNode(
-                groupName
-              )
-            ]
-          )
-        );
-
-
-        const workCenters =
-          Object.keys(
-            wcMap
-          ).sort();
-
-
-        if (
-          !workCenters.length
-        ) {
-
-          groupSection.appendChild(
-            el(
-              'div',
-              {
-                class:
-                  'group-empty'
-              },
-              [
-                document.createTextNode(
-                  'No data yet for this section.'
-                )
-              ]
-            )
-          );
-
-
-          main.appendChild(
-            groupSection
-          );
-
-
-          return;
-        }
-
-
-        workCenters.forEach(
-          wc => {
-
-            const batches =
-              Object.entries(
-                wcMap[wc]
-              )
-                .map(
-                  ([batch, v]) => ({
-                    batch,
-                    qty: v.qty,
-                    amt: v.amt,
-                    time: v.time,
-
-                    products:
-                      (
-                        v.products ||
-                        []
-                      ).join(', '),
-
-                    rate:
-                      v.qty > 0
-                        ? v.amt / v.qty
-                        : null,
-
-                    throughput:
-                      v.time > 0
-                        ? v.qty / v.time
-                        : null
-                  })
-                )
-                .sort(
-                  (a, b) =>
-                    b.qty - a.qty
-                );
-
-
-            /* ---------------------------------------------
-               OUTLIERS
-            --------------------------------------------- */
-
-            const rates =
-              batches
-                .map(
-                  b => b.rate
-                )
-                .filter(
-                  r =>
-                    r !== null
-                )
-                .sort(
-                  (a, b) =>
-                    a - b
-                );
-
-
-            const throughputs =
-              batches
-                .map(
-                  b =>
-                    b.throughput
-                )
-                .filter(
-                  t =>
-                    t !== null
-                )
-                .sort(
-                  (a, b) =>
-                    a - b
-                );
-
-
-            const medRate =
-              rates.length
-                ? rates[
-                    Math.floor(
-                      rates.length / 2
-                    )
-                  ]
-                : null;
-
-
-            const medThroughput =
-              throughputs.length
-                ? throughputs[
-                    Math.floor(
-                      throughputs.length / 2
-                    )
-                  ]
-                : null;
-
-
-            batches.forEach(
-              b => {
-
-                b.flags = [];
-
-
-                if (
-                  medRate &&
-                  b.rate !== null &&
-                  b.rate >
-                    medRate * 1.75
-                ) {
-
-                  b.flags.push(
-                    'High cost'
-                  );
-                }
-
-
-                if (
-                  medThroughput &&
-                  b.throughput !== null &&
-                  b.throughput <
-                    medThroughput * 0.25
-                ) {
-
-                  b.flags.push(
-                    'Slow'
-                  );
-                }
-              }
-            );
-
-
-            /* ---------------------------------------------
-               WORK CENTER SECTION
-            --------------------------------------------- */
-
-            const section =
-              el(
-                'div',
-                {
-                  class:
-                    'wc-section'
-                }
-              );
-
-
-            section.appendChild(
-              el(
-                'h2',
-                {},
-                [
-                  el(
-                    'span',
-                    {
-                      class: 'bar'
-                    },
-                    []
-                  ),
-
-                  document.createTextNode(
-                    wc
-                  )
-                ]
-              )
-            );
-
-
-            section.appendChild(
-              el(
-                'div',
-                {
-                  class:
-                    'wc-sub'
-                },
-                [
-                  document.createTextNode(
-                    batches.length +
-                    ' batches'
-                  )
-                ]
-              )
-            );
-
-
-            const canvas =
-              el(
-                'canvas',
-                {
-                  id:
-                    'chart_' +
-                    chartIdx++
-                }
-              );
-
-
-            section.appendChild(
-              canvas
-            );
-
-
-            /* ---------------------------------------------
-               TABLE
-            --------------------------------------------- */
-
-            const tableWrap =
-              el(
-                'div',
-                {
-                  class:
-                    'table-wrap'
-                }
-              );
-
-
-            const table =
-              el(
-                'table',
-                {},
-                [
-                  el(
-                    'thead',
-                    {},
-                    [
-                      el(
-                        'tr',
-                        {},
-                        [
-                          el(
-                            'th',
-                            {},
-                            [
-                              document.createTextNode(
-                                'Batch'
-                              )
-                            ]
-                          ),
-
-                          el(
-                            'th',
-                            {},
-                            [
-                              document.createTextNode(
-                                'Product'
-                              )
-                            ]
-                          ),
-
-                          el(
-                            'th',
-                            {},
-                            [
-                              document.createTextNode(
-                                'Qty (KG)'
-                              )
-                            ]
-                          ),
-
-                          el(
-                            'th',
-                            {},
-                            [
-                              document.createTextNode(
-                                'Amount (Rs)'
-                              )
-                            ]
-                          ),
-
-                          el(
-                            'th',
-                            {},
-                            [
-                              document.createTextNode(
-                                'Time (min)'
-                              )
-                            ]
-                          ),
-
-                          el(
-                            'th',
-                            {},
-                            [
-                              document.createTextNode(
-                                'Rate (Rs/KG)'
-                              )
-                            ]
-                          ),
-
-                          el(
-                            'th',
-                            {},
-                            [
-                              document.createTextNode(
-                                'Flags'
-                              )
-                            ]
-                          )
-                        ]
-                      )
-                    ]
-                  )
-                ]
-              );
-
-
-            const tbody =
-              el(
-                'tbody',
-                {}
-              );
-
-
-            batches.forEach(
-              b => {
-
-                const row =
-                  el(
-                    'tr',
-                    {
-                      class:
-                        b.flags.length
-                          ? 'flagged-row'
-                          : '',
-                      'data-batch':
-                        b.batch
-                          .toUpperCase()
-                    },
-                    [
-                      el(
-                        'td',
-                        {
-                          class:
-                            'batch-code'
-                        },
-                        [
-                          document.createTextNode(
-                            b.batch
-                          )
-                        ]
-                      ),
-
-                      el(
-                        'td',
-                        {},
-                        [
-                          document.createTextNode(
-                            b.products ||
-                            '-'
-                          )
-                        ]
-                      ),
-
-                      el(
-                        'td',
-                        {
-                          class: 'num'
-                        },
-                        [
-                          document.createTextNode(
-                            fmt(b.qty)
-                          )
-                        ]
-                      ),
-
-                      el(
-                        'td',
-                        {
-                          class: 'num'
-                        },
-                        [
-                          document.createTextNode(
-                            fmt(b.amt)
-                          )
-                        ]
-                      ),
-
-                      el(
-                        'td',
-                        {
-                          class: 'num'
-                        },
-                        [
-                          document.createTextNode(
-                            fmt(
-                              b.time,
-                              1
-                            )
-                          )
-                        ]
-                      ),
-
-                      el(
-                        'td',
-                        {
-                          class: 'num'
-                        },
-                        [
-                          document.createTextNode(
-                            b.rate !== null
-                              ? fmt(
-                                  b.rate,
-                                  2
-                                )
-                              : '-'
-                          )
-                        ]
-                      ),
-
-                      el(
-                        'td',
-                        {},
-                        b.flags.length
-                          ? b.flags.map(
-                              f =>
-                                el(
-                                  'span',
-                                  {
-                                    class:
-                                      'flag-badge'
-                                  },
-                                  [
-                                    document.createTextNode(
-                                      f
-                                    )
-                                  ]
-                                )
-                            )
-                          : [
-                              document.createTextNode(
-                                ''
-                              )
-                            ]
-                      )
-                    ]
-                  );
-
-
-                tbody.appendChild(
-                  row
-                );
-              }
-            );
-
-
-            table.appendChild(
-              tbody
-            );
-
-
-            tableWrap.appendChild(
-              table
-            );
-
-
-            section.appendChild(
-              tableWrap
-            );
-
-
-            groupSection.appendChild(
-              section
-            );
-
-
-            /* ---------------------------------------------
-               CHART
-            --------------------------------------------- */
-
-            const ctx =
-              canvas.getContext(
-                '2d'
-              );
-
-
-            const chart =
-              new Chart(
-                ctx,
-                {
-                  type: 'bar',
-
-                  data: {
-                    labels:
-                      batches.map(
-                        b =>
-                          b.batch
-                      ),
-
-                    datasets: [
-                      {
-                        label:
-                          'Total Qty (KG)',
-
-                        data:
-                          batches.map(
-                            b =>
-                              b.qty
-                          ),
-
-                        backgroundColor:
-                          '#BE6A34'
-                      },
-
-                      {
-                        label:
-                          'Total Amount (Rs)',
-
-                        data:
-                          batches.map(
-                            b =>
-                              b.amt
-                          ),
-
-                        backgroundColor:
-                          '#3F6E52'
-                      },
-
-                      {
-                        label:
-                          'Total Time (min)',
-
-                        data:
-                          batches.map(
-                            b =>
-                              b.time
-                          ),
-
-                        backgroundColor:
-                          '#C9932F'
-                      }
-                    ]
-                  },
-
-                  options: {
-                    responsive: true,
-
-                    plugins: {
-                      legend: {
-                        position:
-                          'bottom',
-
-                        labels: {
-                          boxWidth:
-                            12,
-
-                          font: {
-                            size: 11
-                          }
-                        }
-                      }
-                    },
-
-                    scales: {
-                      x: {
-                        ticks: {
-                          autoSkip:
-                            false,
-
-                          maxRotation:
-                            60,
-
-                          minRotation:
-                            45,
-
-                          font: {
-                            size: 10
-                          }
-                        }
-                      },
-
-                      y: {
-                        beginAtZero:
-                          true
-                      }
-                    }
-                  }
-                }
-              );
-
-
-            chartInstances.push(
-              chart
-            );
-          }
-        );
-
-
-        main.appendChild(
-          groupSection
-        );
-      }
-    );
-  }
-
-
-  /* =========================================================
-     STAT CARD
-  ========================================================= */
-
-  function statCard(
-    label,
-    value,
-    variant
-  ) {
-
-    return el(
-      'div',
-      {
-        class:
-          'stat-card' +
-          (
-            variant
-              ? ' ' + variant
-              : ''
-          )
-      },
-      [
-        el(
-          'div',
-          {
-            class: 'label'
-          },
-          [
-            document.createTextNode(
-              label
-            )
-          ]
-        ),
-
-        el(
-          'div',
-          {
-            class: 'value'
-          },
-          [
-            document.createTextNode(
-              value
-            )
-          ]
-        )
-      ]
-    );
-  }
-
-
-  /* =========================================================
-     SEARCH
-  ========================================================= */
-
-  function applySearchFilter() {
-
-    const rows =
-      document.querySelectorAll(
-        'tr[data-batch]'
-      );
-
-
-    rows.forEach(
-      row => {
-
-        const match =
-          !searchTerm ||
-          row
-            .getAttribute(
-              'data-batch'
-            )
-            .includes(
-              searchTerm
-            );
-
-
-        row.style.display =
-          match
-            ? ''
-            : 'none';
-      }
-    );
-
-
-    document
-      .querySelectorAll(
-        '.wc-section'
-      )
-      .forEach(
-        section => {
-
-          const visibleRows =
-            section.querySelectorAll(
-              'tr[data-batch]:not([style*="display: none"])'
-            );
-
-
-          section.style.display =
-            (
-              searchTerm &&
-              visibleRows.length === 0
-            )
-              ? 'none'
-              : '';
-        }
-      );
-  }
-
-
-  /* =========================================================
-     PDF EXPORT (current department only) — generates a real PDF
-     file client-side using jsPDF + autoTable and triggers a direct
-     download, with no print dialog involved.
-  ========================================================= */
-
-  function exportDeptPdf(activeTab, groupsToRender, bucketed, otherBucket, label) {
-    if (typeof window.jspdf === 'undefined') {
-      showToast('PDF library failed to load — check your internet connection and try again.', true);
-      return;
-    }
-
-    const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4' });
-    const pageHeight = doc.internal.pageSize.getHeight();
-    let y = 40;
-
-    doc.setFontSize(16);
-    doc.text('CCP Batch Tracker \u2014 ' + activeTab.label, 40, y);
-    y += 18;
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(label + '  \u2014  generated ' + new Date().toLocaleString(), 40, y);
-    doc.setTextColor(0);
-    y += 24;
-
-    groupsToRender.forEach(groupName => {
-      const wcMap = groupName === 'Other' ? otherBucket : bucketed[groupName];
-      const workCenters = Object.keys(wcMap).sort();
-
-      if (!workCenters.length) {
-        doc.setFontSize(11);
-        doc.text('No data for this section.', 40, y);
-        y += 20;
-        return;
-      }
-
-      workCenters.forEach(wc => {
-        const batches = Object.entries(wcMap[wc])
-          .map(([batch, v]) => ({
-            batch, qty: v.qty, amt: v.amt, time: v.time,
-            products: (v.products || []).join(', '),
-            rate: v.qty > 0 ? v.amt / v.qty : null
-          }))
-          .sort((a, b) => b.qty - a.qty);
-
-        if (y > pageHeight - 100) { doc.addPage(); y = 40; }
-
-        doc.setFontSize(12);
-        doc.text(wc + ' (' + batches.length + ' batches)', 40, y);
-        y += 8;
-
-        doc.autoTable({
-          startY: y,
-          head: [['Batch', 'Product', 'Qty (KG)', 'Amount (Rs)', 'Time (min)', 'Rate (Rs/KG)']],
-          body: batches.map(b => [
-            b.batch,
-            b.products || '-',
-            fmt(b.qty),
-            fmt(b.amt),
-            fmt(b.time, 1),
-            b.rate !== null ? fmt(b.rate, 2) : '-'
-          ]),
-          styles: { fontSize: 8, cellPadding: 3 },
-          headStyles: { fillColor: [43, 48, 56] },
-          margin: { left: 40, right: 40 },
-          theme: 'grid'
-        });
-
-        y = doc.lastAutoTable.finalY + 20;
-      });
-    });
-
-    const filename = 'CCP_' + activeTab.key + '_' + label.replace(/[^a-z0-9]/gi, '_') + '.pdf';
-    doc.save(filename);
-    showToast('PDF downloaded: ' + filename);
-  }
-
-
-  /* =========================================================
-     DEBUG
-  ========================================================= */
-
-  window.__ccpDebug = {
-    handleFile,
-    renderAll,
-    getDateIndex,
-    getDayData,
-    deleteDayData,
-    parseWorkbook,
-    getGroupForRow,
-    dateToKey,
-    excelSerialToKey,
-    parseDateString
-  };
-
-
-  renderAll();
-
+  const src = document.getElementById('app-source').textContent;
+  const compiled = Babel.transform(src, { presets: [['react', { runtime: 'classic' }]] }).code;
+  const script = document.createElement('script');
+  script.textContent = compiled;
+  document.body.appendChild(script);
 })();
 </script>
+</body>
+</html>
