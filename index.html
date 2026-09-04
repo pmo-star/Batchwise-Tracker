@@ -156,21 +156,48 @@ async function setDayRows(dateKey, rows) {
 /* ============================================================
    PARSING
 ============================================================ */
+function normalizeHeader(h) {
+  return String(h == null ? '' : h)
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 function findCol(headers, exact, contains, exclude) {
-  const lower = headers.map(h => (h || '').toString().toLowerCase().trim());
+  const normalized = headers.map(normalizeHeader);
   if (exact) {
     for (const name of exact) {
-      const idx = lower.indexOf(name.toLowerCase());
+      const target = normalizeHeader(name);
+      const idx = normalized.indexOf(target);
       if (idx !== -1) return idx;
     }
   }
   if (contains) {
-    for (let i = 0; i < lower.length; i++) {
-      const h = lower[i];
-      if (contains.every(k => h.includes(k)) && !(exclude || []).some(k => h.includes(k))) return i;
+    const wanted = contains.map(normalizeHeader);
+    const blocked = (exclude || []).map(normalizeHeader);
+    for (let i = 0; i < normalized.length; i++) {
+      const h = normalized[i];
+      if (wanted.every(k => h.includes(k)) && !blocked.some(k => h.includes(k))) return i;
     }
   }
   return -1;
+}
+
+// Prefer the SAP Amount column because the app aggregates amounts and then
+// calculates Rs/kg as amount / quantity. If an export contains only Rs/kg,
+// the parser can still convert that rate to an amount using qty.
+function findCostColumns(headers, family, type) {
+  const amount = findCol(headers,
+    [family + ' Amount'],
+    [family.toLowerCase(), 'amount']
+  );
+  const rate = findCol(headers,
+    [family + ' Rs/KG', family + ' Rs/Kg', family + ' Rs/kg'],
+    [family.toLowerCase(), 'rs/kg']
+  );
+  return { amount, rate, type };
 }
 
 function dateToKey(val) {
@@ -200,7 +227,15 @@ function keyToLabel(key) {
   return d + ' ' + months[parseInt(m, 10) - 1] + ' ' + y;
 }
 
-function num(v) { const n = parseFloat(v); return isFinite(n) ? n : 0; }
+function num(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  const cleaned = String(v == null ? '' : v)
+    .replace(/,/g, '')
+    .replace(/₹/g, '')
+    .trim();
+  const n = parseFloat(cleaned);
+  return isFinite(n) ? n : 0;
+}
 
 async function extractRowsFromPdf(arrayBuffer) {
   const data = new Uint8Array(arrayBuffer);
@@ -263,16 +298,38 @@ async function parseWorkbook(arrayBuffer, isPdf) {
   const matCodeCol = findCol(headers, ['Material Code'], ['material', 'code'], ['description', 'group']);
   const batchCol = findCol(headers, ['Batch']);
   const dateCol = findCol(headers, ['Posting Date'], ['posting', 'date']);
-  const qtyCol = findCol(headers, null, ['qty'], ['unit']);
-  const storeDCol = findCol(headers, ['Store Direct Amount'], ['store', 'direct'], ['rs/kg', 'indirect']);
-  const storeICol = findCol(headers, ['Store Indirect Amount'], ['store', 'indirect'], ['rs/kg']);
-  const powerDCol = findCol(headers, ['Power Direct Amount'], ['power', 'direct'], ['rs/kg', 'indirect']);
-  const powerICol = findCol(headers, ['Power Indirect Amount'], ['power', 'indirect'], ['rs/kg']);
-  const labDCol = findCol(headers, ['Labour Direct Amount'], ['labour', 'direct'], ['rs/kg', 'indirect']);
-  const labICol = findCol(headers, ['Labour Indirect Amount'], ['labour', 'indirect'], ['rs/kg']);
-  const totalCol = findCol(headers, ['Total Amount (Direct + Indirect)', 'Total Amount'], ['total', 'amount'], ['rs/kg', 'direct)', 'indirect)']);
+  const qtyCol = findCol(headers, ['Quantity', 'Qty'], ['qty'], ['unit']);
 
-  if (locCol === -1 || wcCol === -1) throw new Error('Could not find Storage Location / Work Center columns in this file.');
+  // IMPORTANT: these are intentionally resolved as Amount + Rs/KG pairs.
+  // Amount is stored in the backend; the UI derives Rs/KG by dividing by Qty.
+  const storeDCols = findCostColumns(headers, 'Store Direct', 'storeD');
+  const storeICols = findCostColumns(headers, 'Store Indirect', 'storeI');
+  const powerDCols = findCostColumns(headers, 'Power Direct', 'powerD');
+  const powerICols = findCostColumns(headers, 'Power Indirect', 'powerI');
+  const labDCols = findCostColumns(headers, 'Labour Direct', 'labD');
+  const labICols = findCostColumns(headers, 'Labour Indirect', 'labI');
+
+  const totalAmountCol = findCol(headers,
+    ['Total Amount (Direct + Indirect)', 'Total Amount'],
+    ['total', 'amount']
+  );
+  const totalRateCol = findCol(headers,
+    ['Total Rs/KG', 'Total Rs/Kg', 'Total Rs/kg'],
+    ['total', 'rs/kg']
+  );
+
+  if (locCol === -1 || wcCol === -1) {
+    throw new Error('Could not find Storage Location / Work Center columns in this file.');
+  }
+  if (qtyCol === -1) {
+    throw new Error('Could not find Quantity / Qty column in this file.');
+  }
+
+  function costValue(r, cols, qty) {
+    if (cols.amount !== -1) return num(r[cols.amount]);
+    if (cols.rate !== -1) return num(r[cols.rate]) * qty;
+    return 0;
+  }
 
   const byDate = {};
   dataRows.forEach(r => {
@@ -283,20 +340,30 @@ async function parseWorkbook(arrayBuffer, isPdf) {
     const mat = matCol !== -1 ? (r[matCol] || '').toString().trim() : '';
     const matCode = matCodeCol !== -1 ? (r[matCodeCol] || '').toString().trim() : '';
     const batch = batchCol !== -1 ? (r[batchCol] || '').toString().trim() : '';
+    const qty = num(r[qtyCol]);
+
     const row = {
-      dept, wc, mat: mat || null, matCode: matCode || null, batch: batch || null,
-      qty: qtyCol !== -1 ? num(r[qtyCol]) : 0,
-      storeD: storeDCol !== -1 ? num(r[storeDCol]) : 0,
-      storeI: storeICol !== -1 ? num(r[storeICol]) : 0,
-      labD: labDCol !== -1 ? num(r[labDCol]) : 0,
-      labI: labICol !== -1 ? num(r[labICol]) : 0,
-      powerD: powerDCol !== -1 ? num(r[powerDCol]) : 0,
-      powerI: powerICol !== -1 ? num(r[powerICol]) : 0,
-      total: totalCol !== -1 ? num(r[totalCol]) : 0
+      dept,
+      wc,
+      mat: mat || null,
+      matCode: matCode || null,
+      batch: batch || null,
+      qty,
+      storeD: costValue(r, storeDCols, qty),
+      storeI: costValue(r, storeICols, qty),
+      labD: costValue(r, labDCols, qty),
+      labI: costValue(r, labICols, qty),
+      powerD: costValue(r, powerDCols, qty),
+      powerI: costValue(r, powerICols, qty),
+      total: totalAmountCol !== -1
+        ? num(r[totalAmountCol])
+        : (totalRateCol !== -1 ? num(r[totalRateCol]) * qty : 0)
     };
+
     if (!byDate[dateKey]) byDate[dateKey] = [];
     byDate[dateKey].push(row);
   });
+
   return byDate;
 }
 
