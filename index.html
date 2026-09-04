@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Batchwise Tracker</title>
+<title>Batchwise Tracker — Deep Parser Fix</title>
 <style>
   :root {
     --bg: #F7F5F1;
@@ -241,20 +241,188 @@ async function extractRowsFromPdf(arrayBuffer) {
   const data = new Uint8Array(arrayBuffer);
   const pdf = await pdfjsLib.getDocument({ data }).promise;
 
-  const dataRows = [];
-  let headerRow = null;
+  // SAP's PDF export is visually tabular, but PDF text items are NOT
+  // guaranteed to have one item per logical cell. Header labels are split
+  // into multiple text items, and numeric cells are right-aligned. Therefore
+  // NEVER use the text-item array index as the column index.
+  //
+  // Instead, derive one X-anchor for each logical column from the header's
+  // first word, then place every row item into the X-range of that column.
+  const PDF_HEADERS = [
+    'Company Code',
+    'Plant',
+    'Storage Location',
+    'Work Center',
+    'Work Center Text',
+    'Posting Date',
+    'Batch',
+    'Batch Confirm Qty (in KG)',
+    'Material Group',
+    'Material Code',
+    'Material Code Description',
+    'Batch No. Start Time',
+    'Batch No. End Time',
+    'Batch Run Time (in Min)',
+    'Day Run Time (in Min)',
+    'Store Direct Amount',
+    'Store Direct RS/KG',
+    'Store Indirect Amount',
+    'Store Indirect RS/KG',
+    'Power Direct Amount',
+    'Power Direct RS/KG',
+    'Power Indirect Amount',
+    'Power Indirect RS/KG',
+    'Labour Direct Amount',
+    'Labour Direct RS/KG',
+    'Labour Indirect Amount',
+    'Labour Indirect RS/KG',
+    'Total Direct Amount',
+    'Total Direct RS/KG',
+    'Total Indirect Amount',
+    'Total Indirect RS/KG',
+    'Total Amount (Direct + Indirect)',
+    'Total RS/KG'
+  ];
 
-  function looksLikeHeader(cells) {
-    const joined = normalizeHeader(cells.join(' '));
-    return joined.includes('company code') &&
-      joined.includes('storage location') &&
-      joined.includes('work center text') &&
-      joined.includes('posting date') &&
-      joined.includes('batch') &&
-      joined.includes('material code') &&
-      joined.includes('store direct amount') &&
-      joined.includes('total rs/kg');
+  // First word of each logical header column. Duplicate words are
+  // intentional and consumed from left to right.
+  const FIRST_WORDS = PDF_HEADERS.map(h =>
+    normalizeHeader(h).split(' ')[0]
+  );
+
+  function headerLooksRight(items) {
+    const text = normalizeHeader(items.map(x => x.str).join(' '));
+    return text.includes('company code') &&
+      text.includes('storage location') &&
+      text.includes('work center text') &&
+      text.includes('posting date') &&
+      text.includes('batch confirm qty') &&
+      text.includes('material code') &&
+      text.includes('store direct amount') &&
+      text.includes('power direct rs/kg') &&
+      text.includes('labour indirect rs/kg') &&
+      text.includes('total rs/kg');
   }
+
+  function buildAnchors(headerItems) {
+    const words = headerItems
+      .slice()
+      .sort((a, b) => a.x - b.x);
+
+    const anchors = [];
+    let cursor = 0;
+
+    for (let fieldIndex = 0; fieldIndex < PDF_HEADERS.length; fieldIndex++) {
+      const target = normalizeHeader(PDF_HEADERS[fieldIndex]);
+      let found = -1;
+
+      // Preferred path: PDF.js normally keeps each logical SAP header cell
+      // as one text item. This gives us an exact and stable X anchor.
+      for (let i = cursor; i < words.length; i++) {
+        if (normalizeHeader(words[i].str) === target) {
+          found = i;
+          break;
+        }
+      }
+
+      // Fallback for PDFs where the header phrase is split into multiple text
+      // items: consume the first-word token from left to right.
+      if (found === -1) {
+        const wanted = FIRST_WORDS[fieldIndex];
+        for (let i = cursor; i < words.length; i++) {
+          if (normalizeHeader(words[i].str).split(' ')[0] === wanted) {
+            found = i;
+            break;
+          }
+        }
+      }
+
+      if (found === -1) return null;
+      anchors.push({ x: words[found].x, index: fieldIndex });
+      cursor = found + 1;
+    }
+
+    // X anchors must be strictly increasing for range mapping.
+    for (let i = 1; i < anchors.length; i++) {
+      if (!(anchors[i].x > anchors[i - 1].x)) return null;
+    }
+    return anchors;
+  }
+
+  function cellsFromRow(items, anchors) {
+    const cells = Array(PDF_HEADERS.length).fill('');
+    const sorted = items.slice().sort((a, b) => a.x - b.x);
+
+    // The SAP cost section is the fragile part of this PDF. PDF text has no
+    // real table cells, and right-aligned numeric values can start before or
+    // after a header's X anchor. Mapping every item by "first anchor to the
+    // left" can therefore shift Store/Power/Labour columns.
+    //
+    // Deep-fix strategy:
+    // 1. Use X anchors only for the descriptive part of the row.
+    // 2. Once the row reaches Store Direct Amount, read the numeric cost tail
+    //    strictly left-to-right. SAP's Batch Wise Cost export always emits the
+    //    18 cost fields in this exact order, including zero values.
+    const COST_START = 15; // Store Direct Amount in PDF_HEADERS
+    const costX = anchors[COST_START] ? anchors[COST_START].x : Infinity;
+
+    const headItems = [];
+    const costItems = [];
+    for (const item of sorted) {
+      if (item.x >= costX - 2) costItems.push(item);
+      else headItems.push(item);
+    }
+
+    // Descriptive fields (Company Code ... Day Run Time)
+    for (const item of headItems) {
+      let col = -1;
+      for (let i = COST_START - 1; i >= 0; i--) {
+        if (item.x >= anchors[i].x - 0.5) {
+          col = i;
+          break;
+        }
+      }
+      if (col === -1) continue;
+      const txt = String(item.str || '').trim();
+      if (!txt) continue;
+      cells[col] = cells[col] ? (cells[col] + ' ' + txt) : txt;
+    }
+
+    // Numeric cost tail. Ignore any non-numeric artefacts and preserve the
+    // exact left-to-right order of the SAP export.
+    const numericTail = [];
+    for (const item of costItems) {
+      const txt = String(item.str || '').trim();
+      if (!txt) continue;
+      if (/^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/.test(txt)) {
+        numericTail.push(txt);
+      }
+    }
+
+    // A normal SAP row has exactly 18 values from Store Direct Amount through
+    // Total RS/KG. If the PDF library splits a number unexpectedly, fall back
+    // to X-column mapping instead of silently shifting every subsequent cost.
+    if (numericTail.length >= PDF_HEADERS.length - COST_START) {
+      for (let i = COST_START; i < PDF_HEADERS.length; i++) {
+        cells[i] = numericTail[i - COST_START];
+      }
+    } else {
+      for (const item of costItems) {
+        let col = -1;
+        for (let i = anchors.length - 1; i >= COST_START; i--) {
+          if (item.x >= anchors[i].x - 0.5) { col = i; break; }
+        }
+        if (col === -1) continue;
+        const txt = String(item.str || '').trim();
+        if (!txt) continue;
+        cells[col] = cells[col] ? (cells[col] + ' ' + txt) : txt;
+      }
+    }
+
+    return cells;
+  }
+
+  const dataRows = [];
 
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
@@ -262,44 +430,53 @@ async function extractRowsFromPdf(arrayBuffer) {
 
     const rowMap = {};
     content.items.forEach(item => {
-      const y = Math.round(item.transform[5]);
+      const str = String(item.str || '').trim();
+      if (!str) return;
+      // Keep slightly more precision than the old integer rounding so two
+      // nearby text baselines do not accidentally merge.
+      const y = Math.round(item.transform[5] * 10) / 10;
       const x = item.transform[4];
-      if (String(item.str || '').trim() === '') return;
       if (!rowMap[y]) rowMap[y] = [];
-      rowMap[y].push({ x, str: item.str });
+      rowMap[y].push({ x, str });
     });
 
     const sortedYs = Object.keys(rowMap).map(Number).sort((a, b) => b - a);
-    sortedYs.forEach(y => {
-      const cells = rowMap[y].sort((a, b) => a.x - b.x).map(c => String(c.str || '').trim());
-      if (cells.length < 10) return;
+    let anchors = null;
 
-      if (looksLikeHeader(cells)) {
-        if (!headerRow) headerRow = cells;
-        return;
+    for (const y of sortedYs) {
+      const items = rowMap[y].sort((a, b) => a.x - b.x);
+      if (items.length < 8) continue;
+
+      if (headerLooksRight(items)) {
+        anchors = buildAnchors(items);
+        continue;
       }
 
-      // SAP data rows are the same fixed-width row shape as the header.
-      // Avoid grabbing page titles/footers by requiring the key identifiers.
-      if (!headerRow) return;
-      const batchIdx = findCol(headerRow, ['Batch']);
-      const materialCodeIdx = findCol(headerRow, ['Material Code'], ['material', 'code'], ['description', 'group']);
-      const qtyIdx = findCol(headerRow, ['Batch Confirm Qty (in KG)'], ['qty']);
-      if (batchIdx === -1 || materialCodeIdx === -1 || qtyIdx === -1) return;
-      if (!String(cells[batchIdx] || '').trim()) return;
-      if (!String(cells[materialCodeIdx] || '').trim()) return;
-      if (!String(cells[qtyIdx] || '').trim()) return;
+      if (!anchors) continue;
+
+      const cells = cellsFromRow(items, anchors);
+
+      // Key fields for a real SAP data row. These fixed positions are based
+      // on PDF_HEADERS above, not on the number of raw text items.
+      const postingDate = String(cells[5] || '').trim();
+      const batch = String(cells[6] || '').trim();
+      const qty = String(cells[7] || '').trim();
+      const materialCode = String(cells[9] || '').trim();
+
+      if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(postingDate)) continue;
+      if (!batch || !materialCode || !qty) continue;
+      if (!/[A-Za-z0-9]/.test(materialCode)) continue;
 
       dataRows.push(cells);
-    });
+    }
   }
 
-  if (!headerRow) throw new Error('Could not find the SAP Batch Wise Cost header row in this PDF.');
-  if (!dataRows.length) throw new Error('No usable Batch Wise Cost data rows found in this PDF.');
+  if (!dataRows.length) {
+    throw new Error('No usable Batch Wise Cost data rows found in this PDF.');
+  }
 
-  return [headerRow, ...dataRows];
+  return [PDF_HEADERS, ...dataRows];
 }
-
 async function parseWorkbook(arrayBuffer, isPdf) {
   let rows;
 
