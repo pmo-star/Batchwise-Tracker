@@ -803,7 +803,6 @@ function FilterBar({ dateIndex, selectedDate, setSelectedDate, department, setDe
 function StatRow({ qty, total, entries, fmt }) {
   const cards = [
     ['Total qty', fmt(qty) + ' kg'],
-    ['Total cost', '\u20B9' + fmt(total)],
     ['Entries', fmt(entries)]
   ];
   return (
