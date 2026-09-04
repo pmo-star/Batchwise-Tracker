@@ -194,7 +194,7 @@ function findCostColumns(headers, family, type) {
     [family.toLowerCase(), 'amount']
   );
   const rate = findCol(headers,
-    [family + ' Rs/KG', family + ' Rs/Kg', family + ' Rs/kg'],
+    [family + ' RS/KG', family + ' Rs/KG', family + ' Rs/Kg', family + ' Rs/kg'],
     [family.toLowerCase(), 'rs/kg']
   );
   return { amount, rate, type };
@@ -244,6 +244,18 @@ async function extractRowsFromPdf(arrayBuffer) {
   const dataRows = [];
   let headerRow = null;
 
+  function looksLikeHeader(cells) {
+    const joined = normalizeHeader(cells.join(' '));
+    return joined.includes('company code') &&
+      joined.includes('storage location') &&
+      joined.includes('work center text') &&
+      joined.includes('posting date') &&
+      joined.includes('batch') &&
+      joined.includes('material code') &&
+      joined.includes('store direct amount') &&
+      joined.includes('total rs/kg');
+  }
+
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
     const content = await page.getTextContent();
@@ -252,27 +264,38 @@ async function extractRowsFromPdf(arrayBuffer) {
     content.items.forEach(item => {
       const y = Math.round(item.transform[5]);
       const x = item.transform[4];
+      if (String(item.str || '').trim() === '') return;
       if (!rowMap[y]) rowMap[y] = [];
-      if (item.str.trim() !== '') rowMap[y].push({ x, str: item.str });
+      rowMap[y].push({ x, str: item.str });
     });
 
     const sortedYs = Object.keys(rowMap).map(Number).sort((a, b) => b - a);
     sortedYs.forEach(y => {
-      const cells = rowMap[y].sort((a, b) => a.x - b.x).map(c => c.str);
-      // title lines and page-number lines never have anywhere near the
-      // full column count, so this alone filters them out reliably.
+      const cells = rowMap[y].sort((a, b) => a.x - b.x).map(c => String(c.str || '').trim());
       if (cells.length < 10) return;
-      if (cells[0] === 'Company Code') {
-        // repeated header row (appears on every page) — capture once, skip as data
+
+      if (looksLikeHeader(cells)) {
         if (!headerRow) headerRow = cells;
         return;
       }
+
+      // SAP data rows are the same fixed-width row shape as the header.
+      // Avoid grabbing page titles/footers by requiring the key identifiers.
+      if (!headerRow) return;
+      const batchIdx = findCol(headerRow, ['Batch']);
+      const materialCodeIdx = findCol(headerRow, ['Material Code'], ['material', 'code'], ['description', 'group']);
+      const qtyIdx = findCol(headerRow, ['Batch Confirm Qty (in KG)'], ['qty']);
+      if (batchIdx === -1 || materialCodeIdx === -1 || qtyIdx === -1) return;
+      if (!String(cells[batchIdx] || '').trim()) return;
+      if (!String(cells[materialCodeIdx] || '').trim()) return;
+      if (!String(cells[qtyIdx] || '').trim()) return;
+
       dataRows.push(cells);
     });
   }
 
-  if (!headerRow) throw new Error('Could not find the header row in this PDF.');
-  if (!dataRows.length) throw new Error('No data rows found in this PDF.');
+  if (!headerRow) throw new Error('Could not find the SAP Batch Wise Cost header row in this PDF.');
+  if (!dataRows.length) throw new Error('No usable Batch Wise Cost data rows found in this PDF.');
 
   return [headerRow, ...dataRows];
 }
@@ -357,7 +380,18 @@ async function parseWorkbook(arrayBuffer, isPdf) {
       powerI: costValue(r, powerICols, qty),
       total: totalAmountCol !== -1
         ? num(r[totalAmountCol])
-        : (totalRateCol !== -1 ? num(r[totalRateCol]) * qty : 0)
+        : (totalRateCol !== -1 ? num(r[totalRateCol]) * qty : 0),
+
+      // Preserve SAP's explicit RS/KG fields. Amounts remain the canonical
+      // stored values for backward compatibility; explicit rates are used
+      // whenever the SAP export provides them.
+      storeDRate: storeDCols.rate !== -1 ? num(r[storeDCols.rate]) : null,
+      storeIRate: storeICols.rate !== -1 ? num(r[storeICols.rate]) : null,
+      labDRate: labDCols.rate !== -1 ? num(r[labDCols.rate]) : null,
+      labIRate: labICols.rate !== -1 ? num(r[labICols.rate]) : null,
+      powerDRate: powerDCols.rate !== -1 ? num(r[powerDCols.rate]) : null,
+      powerIRate: powerICols.rate !== -1 ? num(r[powerICols.rate]) : null,
+      totalRate: totalRateCol !== -1 ? num(r[totalRateCol]) : null
     };
 
     if (!byDate[dateKey]) byDate[dateKey] = [];
@@ -389,6 +423,21 @@ function aggregateBy(rows, keyFn, nameFn) {
         powerD: 0,
         powerI: 0,
         total: 0,
+        rateQty: 0,
+        storeDRateWeighted: 0,
+        storeIRateWeighted: 0,
+        labDRateWeighted: 0,
+        labIRateWeighted: 0,
+        powerDRateWeighted: 0,
+        powerIRateWeighted: 0,
+        totalRateWeighted: 0,
+        storeDRateWeight: 0,
+        storeIRateWeight: 0,
+        labDRateWeight: 0,
+        labIRateWeight: 0,
+        powerDRateWeight: 0,
+        powerIRateWeight: 0,
+        totalRateWeight: 0,
         wcs: new Set(),
         mats: new Set(),
         matCodes: new Set()
@@ -400,6 +449,17 @@ function aggregateBy(rows, keyFn, nameFn) {
 
     ['qty','storeD','storeI','labD','labI','powerD','powerI','total']
       .forEach(f => b[f] += r[f]);
+
+    if (r.qty > 0) {
+      b.rateQty += r.qty;
+      if (r.storeDRate != null) { b.storeDRateWeighted += r.storeDRate * r.qty; b.storeDRateWeight += r.qty; }
+      if (r.storeIRate != null) { b.storeIRateWeighted += r.storeIRate * r.qty; b.storeIRateWeight += r.qty; }
+      if (r.labDRate != null) { b.labDRateWeighted += r.labDRate * r.qty; b.labDRateWeight += r.qty; }
+      if (r.labIRate != null) { b.labIRateWeighted += r.labIRate * r.qty; b.labIRateWeight += r.qty; }
+      if (r.powerDRate != null) { b.powerDRateWeighted += r.powerDRate * r.qty; b.powerDRateWeight += r.qty; }
+      if (r.powerIRate != null) { b.powerIRateWeighted += r.powerIRate * r.qty; b.powerIRateWeight += r.qty; }
+      if (r.totalRate != null) { b.totalRateWeighted += r.totalRate * r.qty; b.totalRateWeight += r.qty; }
+    }
 
     if (r.wc) b.wcs.add(r.wc);
     if (r.mat) b.mats.add(r.mat);
@@ -415,13 +475,13 @@ function aggregateBy(rows, keyFn, nameFn) {
       // normally exactly one code. Keeping a simple string here avoids
       // showing misleading multi-code values for one production row.
       matCode: Array.from(b.matCodes)[0] || '',
-      rate: b.qty ? b.total / b.qty : 0,
-      storeDRate: b.qty ? b.storeD / b.qty : 0,
-      storeIRate: b.qty ? b.storeI / b.qty : 0,
-      labDRate: b.qty ? b.labD / b.qty : 0,
-      labIRate: b.qty ? b.labI / b.qty : 0,
-      powerDRate: b.qty ? b.powerD / b.qty : 0,
-      powerIRate: b.qty ? b.powerI / b.qty : 0
+      rate: b.totalRateWeight ? b.totalRateWeighted / b.totalRateWeight : (b.qty ? b.total / b.qty : 0),
+      storeDRate: b.storeDRateWeight ? b.storeDRateWeighted / b.storeDRateWeight : (b.qty ? b.storeD / b.qty : 0),
+      storeIRate: b.storeIRateWeight ? b.storeIRateWeighted / b.storeIRateWeight : (b.qty ? b.storeI / b.qty : 0),
+      labDRate: b.labDRateWeight ? b.labDRateWeighted / b.labDRateWeight : (b.qty ? b.labD / b.qty : 0),
+      labIRate: b.labIRateWeight ? b.labIRateWeighted / b.labIRateWeight : (b.qty ? b.labI / b.qty : 0),
+      powerDRate: b.powerDRateWeight ? b.powerDRateWeighted / b.powerDRateWeight : (b.qty ? b.powerD / b.qty : 0),
+      powerIRate: b.powerIRateWeight ? b.powerIRateWeighted / b.powerIRateWeight : (b.qty ? b.powerI / b.qty : 0)
     }))
     .sort((a, b) => b.qty - a.qty);
 }
