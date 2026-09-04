@@ -305,21 +305,49 @@ async function parseWorkbook(arrayBuffer, isPdf) {
 ============================================================ */
 function aggregateBy(rows, keyFn, nameFn) {
   const buckets = {};
+
   rows.forEach(r => {
     const k = keyFn(r);
     if (!k) return;
-    if (!buckets[k]) buckets[k] = { name: nameFn ? nameFn(r) : k, count: 0, qty: 0, storeD: 0, storeI: 0, labD: 0, labI: 0, powerD: 0, powerI: 0, total: 0, wc: r.wc, mats: new Set(), matCodes: new Set() };
+
+    if (!buckets[k]) {
+      buckets[k] = {
+        name: nameFn ? nameFn(r) : k,
+        count: 0,
+        qty: 0,
+        storeD: 0,
+        storeI: 0,
+        labD: 0,
+        labI: 0,
+        powerD: 0,
+        powerI: 0,
+        total: 0,
+        wcs: new Set(),
+        mats: new Set(),
+        matCodes: new Set()
+      };
+    }
+
     const b = buckets[k];
     b.count++;
-    ['qty','storeD','storeI','labD','labI','powerD','powerI','total'].forEach(f => b[f] += r[f]);
+
+    ['qty','storeD','storeI','labD','labI','powerD','powerI','total']
+      .forEach(f => b[f] += r[f]);
+
+    if (r.wc) b.wcs.add(r.wc);
     if (r.mat) b.mats.add(r.mat);
     if (r.matCode) b.matCodes.add(r.matCode);
   });
+
   return Object.values(buckets)
     .map(b => ({
       ...b,
+      wc: Array.from(b.wcs).join(', '),
       material: Array.from(b.mats).join(', '),
-      matCode: Array.from(b.matCodes).join(', '),
+      // Batch view groups by Batch + Material Code, therefore this is
+      // normally exactly one code. Keeping a simple string here avoids
+      // showing misleading multi-code values for one production row.
+      matCode: Array.from(b.matCodes)[0] || '',
       rate: b.qty ? b.total / b.qty : 0,
       storeDRate: b.qty ? b.storeD / b.qty : 0,
       storeIRate: b.qty ? b.storeI / b.qty : 0,
@@ -487,14 +515,31 @@ function App() {
       r => (r.mat || 'Unspecified') + '||' + r.wc,
       r => r.mat || 'Unspecified'
     );
-    if (view === 'batch') return aggregateBy(deptRows, r => r.batch);
+    if (view === 'batch') {
+      // IMPORTANT: a batch can contain multiple material codes.
+      // Each Batch + Material Code combination must have its own
+      // quantity/cost aggregation so costs never get mixed.
+      return aggregateBy(
+        deptRows,
+        r => {
+          const batch = r.batch || 'Unknown batch';
+          const materialCode = r.matCode || 'Unknown material code';
+          return batch + '||' + materialCode;
+        },
+        r => r.batch || 'Unknown batch'
+      );
+    }
     return [];
   }, [deptRows, view]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return aggregated;
     const q = search.trim().toLowerCase();
-    return aggregated.filter(r => r.name.toLowerCase().includes(q) || (r.wc || '').toLowerCase().includes(q));
+    return aggregated.filter(r =>
+      r.name.toLowerCase().includes(q) ||
+      (r.wc || '').toLowerCase().includes(q) ||
+      (r.matCode || '').toLowerCase().includes(q)
+    );
   }, [aggregated, search]);
 
   const totals = useMemo(() => {
