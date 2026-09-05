@@ -77,12 +77,18 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.2.0/chartjs-plugin-zoom.min.js"></script>
 
 <script type="text/babel-jsx" id="app-source">
 const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
 if (typeof pdfjsLib !== 'undefined') {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+}
+
+if (typeof Chart !== 'undefined' && typeof ChartZoom !== 'undefined') {
+  Chart.register(ChartZoom);
 }
 
 /* ============================================================
@@ -572,6 +578,37 @@ function App() {
   const deptRows = useMemo(() => (rows || []).filter(r => r.dept === department), [rows, department]);
   const hasBatch = useMemo(() => deptRows.some(r => r.batch), [deptRows]);
 
+  const alloyOptions = useMemo(() => {
+    const totals = {};
+    deptRows.forEach(r => {
+      if (!r.mat) return;
+      totals[r.mat] = (totals[r.mat] || 0) + r.qty;
+    });
+    return Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+  }, [deptRows]);
+
+  // for the trend charts specifically: the set of alloy lines shown must stay
+  // the same no matter which single date is picked up top, otherwise every
+  // date switch reshuffles which lines appear. This looks across every
+  // uploaded date for the department, not just the currently selected one.
+  const allTimeAlloyOptions = useMemo(() => {
+    if (!allRows) return [];
+    const totals = {};
+    allRows.forEach(r => {
+      if (r.dept !== department || !r.mat) return;
+      // dross / scrap / process scrap are recovered by-product materials,
+      // not primary alloys — they shouldn't show up as their own trend line
+      const nameLower = r.mat.toLowerCase();
+      if (nameLower.includes('dross') || nameLower.includes('scrap')) return;
+      totals[r.mat] = (totals[r.mat] || 0) + r.qty;
+    });
+    // cap to the top 10 by quantity — this matches the trend chart's color
+    // palette size (10 colors) so no two lines ever end up the same color,
+    // and it keeps small-volume by-product materials from cluttering the
+    // legend when a department accumulates many material codes over time.
+    return Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 10);
+  }, [allRows, department]);
+
   useEffect(() => {
     if (view === 'batch' && !hasBatch) setView('wc');
   }, [hasBatch, view]);
@@ -671,9 +708,47 @@ function App() {
           <StatRow qty={totals.qty} total={totals.total} entries={deptRows.length} fmt={fmt} />
         )}
 
-        {!loading && !error && view === 'alloy' && filtered.length > 0 && (
-          <BatchCostChart rows={filtered} title="Cost per kg by alloy" />
+        {!loading && !error && view === 'alloy' && allTimeAlloyOptions.length > 0 && (
+          <div style={{
+            background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12,
+            padding: '16px 16px 8px', marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Cost per kg over time</span>
+              <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>(all machines combined, {department} — top 10 alloys by volume — hover a point for qty too)</span>
+            </div>
+            <AlloyTrendChart allRows={allRows} department={department} alloys={allTimeAlloyOptions} />
+          </div>
         )}
+
+        {/* "Qty over time" and "Cost per kg by month" charts commented out
+            per request — only "Cost per kg over time" stays visible.
+        {!loading && !error && view === 'alloy' && allTimeAlloyOptions.length > 0 && (
+          <div style={{
+            background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12,
+            padding: '16px 16px 8px', marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Qty over time</span>
+              <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>(all machines combined, {department})</span>
+            </div>
+            <AlloyQtyTrendChart allRows={allRows} department={department} alloys={allTimeAlloyOptions} />
+          </div>
+        )}
+
+        {!loading && !error && view === 'alloy' && allTimeAlloyOptions.length > 0 && (
+          <div style={{
+            background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12,
+            padding: '16px 16px 8px', marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Cost per kg by month</span>
+              <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>(all machines combined, {department} — hover for qty and total production)</span>
+            </div>
+            <MonthlyAlloyTrendChart allRows={allRows} department={department} alloys={allTimeAlloyOptions} />
+          </div>
+        )}
+        */}
 
         <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden' }}>
           {loading ? (
@@ -862,6 +937,301 @@ function MultiValueCell({ value }) {
 /* ============================================================
    BATCH COST CHART (Rs/kg per batch, line chart)
 ============================================================ */
+function ChartResetButton({ chartRef }) {
+  return (
+    <button onClick={() => chartRef.current && chartRef.current.resetZoom()} className="focus-ring" style={{
+      position: 'absolute', top: 0, right: 0, fontSize: 11, fontWeight: 600, padding: '4px 8px',
+      borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface-2)', color: 'var(--ink-2)', zIndex: 2
+    }}>Reset zoom</button>
+  );
+}
+
+/* ============================================================
+   ALLOY TREND CHART (Rs/kg for every alloy, across all dates,
+   summed across every machine in the department, one line each)
+============================================================ */
+const TREND_LINE_COLORS = ['#B54E2E', '#2E6FBF', '#1E9E6B', '#D9A400', '#C0568A', '#6B4FBF', '#2AA198', '#C4453A', '#7A8B3F', '#8B5A2B'];
+
+const ZOOM_PAN_OPTIONS = {
+  pan: { enabled: true, mode: 'x', modifierKey: null },
+  zoom: {
+    wheel: { enabled: true, speed: 0.08 },
+    pinch: { enabled: true },
+    drag: { enabled: false },
+    mode: 'x'
+  },
+  limits: { x: { minRange: 2 } }
+};
+
+function buildAlloyTrendData(allRows, department, alloys) {
+  if (!allRows || !alloys.length) return { dates: [], rateDatasets: [], qtyDatasets: [], totalQtyByDate: {} };
+  const dateSet = new Set();
+  const byAlloyDate = {};
+  const totalQtyByDate = {};
+  allRows.forEach(r => {
+    if (r.dept !== department) return;
+    // total production for the date includes every alloy in the department,
+    // not just the ones currently plotted as lines
+    totalQtyByDate[r.date] = (totalQtyByDate[r.date] || 0) + r.qty;
+    if (!alloys.includes(r.mat)) return;
+    dateSet.add(r.date);
+    const key = r.mat + '||' + r.date;
+    if (!byAlloyDate[key]) byAlloyDate[key] = { qty: 0, total: 0 };
+    byAlloyDate[key].qty += r.qty;
+    byAlloyDate[key].total += r.total;
+  });
+  const dates = Array.from(dateSet).sort();
+  const rateDatasets = alloys.map((alloy, i) => ({
+    label: alloy,
+    data: dates.map(d => {
+      const b = byAlloyDate[alloy + '||' + d];
+      return b && b.qty ? b.total / b.qty : null;
+    }),
+    qty: dates.map(d => {
+      const b = byAlloyDate[alloy + '||' + d];
+      return b ? b.qty : null;
+    }),
+    borderColor: TREND_LINE_COLORS[i % TREND_LINE_COLORS.length],
+    backgroundColor: TREND_LINE_COLORS[i % TREND_LINE_COLORS.length],
+    fill: false, tension: 0.3, pointRadius: 4, spanGaps: true
+  }));
+  const qtyDatasets = alloys.map((alloy, i) => ({
+    label: alloy,
+    data: dates.map(d => {
+      const b = byAlloyDate[alloy + '||' + d];
+      return b ? b.qty : null;
+    }),
+    borderColor: TREND_LINE_COLORS[i % TREND_LINE_COLORS.length],
+    backgroundColor: TREND_LINE_COLORS[i % TREND_LINE_COLORS.length],
+    fill: false, tension: 0.3, pointRadius: 4, spanGaps: true
+  }));
+  return { dates, rateDatasets, qtyDatasets, totalQtyByDate };
+}
+
+function AlloyTrendChart({ allRows, department, alloys }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+
+  const { dates, rateDatasets, totalQtyByDate } = useMemo(
+    () => buildAlloyTrendData(allRows, department, alloys),
+    [allRows, department, alloys]
+  );
+
+  useEffect(() => {
+    if (!canvasRef.current || typeof Chart === 'undefined') return;
+    if (chartRef.current) chartRef.current.destroy();
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'line',
+      data: { labels: dates.map(keyToLabel), datasets: rateDatasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { boxWidth: 12, boxHeight: 12, font: { size: 11 } } },
+          zoom: ZOOM_PAN_OPTIONS,
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const rate = ctx.parsed.y;
+                const rateText = rate != null ? rate.toFixed(2) + ' Rs/kg' : 'no data';
+                return ctx.dataset.label + ': ' + rateText;
+              },
+              footer: (items) => {
+                if (!items.length) return '';
+                const item = items[0];
+                const qty = item.dataset.qty ? item.dataset.qty[item.dataIndex] : null;
+                return 'Total production: ' + (qty != null ? Math.round(qty).toLocaleString('en-IN') : '0') + ' kg';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { autoSkip: false, maxRotation: 45 }, grid: { display: false } },
+          y: { title: { display: true, text: 'Rs / kg' }, grid: { color: '#E7E2D8' }, beginAtZero: true }
+        }
+      }
+    });
+    return () => { if (chartRef.current) chartRef.current.destroy(); };
+  }, [dates, rateDatasets, totalQtyByDate]);
+
+  if (!rateDatasets.length) {
+    return <div style={{ fontSize: 13, color: 'var(--ink-2)', padding: '12px 0' }}>No trend data yet.</div>;
+  }
+
+  return (
+    <div style={{ position: 'relative', height: 280 }}>
+      <ChartResetButton chartRef={chartRef} />
+      <canvas ref={canvasRef} role="img" aria-label="Line chart of Rs per kg cost over time, one line per alloy. Hover a point to see quantity. Scroll to zoom, drag to pan."></canvas>
+    </div>
+  );
+}
+
+/* ============================================================
+   ALLOY QTY TREND CHART (Qty kg for every alloy, across dates)
+============================================================ */
+function AlloyQtyTrendChart({ allRows, department, alloys }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+
+  const { dates, qtyDatasets } = useMemo(
+    () => buildAlloyTrendData(allRows, department, alloys),
+    [allRows, department, alloys]
+  );
+
+  useEffect(() => {
+    if (!canvasRef.current || typeof Chart === 'undefined') return;
+    if (chartRef.current) chartRef.current.destroy();
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'line',
+      data: { labels: dates.map(keyToLabel), datasets: qtyDatasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { boxWidth: 12, boxHeight: 12, font: { size: 11 } } },
+          zoom: ZOOM_PAN_OPTIONS,
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ctx.dataset.label + ': ' + (ctx.parsed.y != null ? Math.round(ctx.parsed.y).toLocaleString('en-IN') + ' kg' : 'no data')
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { autoSkip: false, maxRotation: 45 }, grid: { display: false } },
+          y: { title: { display: true, text: 'Qty (kg)' }, grid: { color: '#E7E2D8' }, beginAtZero: true }
+        }
+      }
+    });
+    return () => { if (chartRef.current) chartRef.current.destroy(); };
+  }, [dates, qtyDatasets]);
+
+  if (!qtyDatasets.length) {
+    return <div style={{ fontSize: 13, color: 'var(--ink-2)', padding: '12px 0' }}>No trend data yet.</div>;
+  }
+
+  return (
+    <div style={{ position: 'relative', height: 280 }}>
+      <ChartResetButton chartRef={chartRef} />
+      <canvas ref={canvasRef} role="img" aria-label="Line chart of quantity in kg over time, one line per alloy. Scroll to zoom, drag to pan."></canvas>
+    </div>
+  );
+}
+
+/* ============================================================
+   MONTHLY ALLOY TREND CHART (Rs/kg for every alloy, grouped by
+   calendar month instead of by individual date)
+============================================================ */
+function monthKeyToLabel(key) {
+  const [y, m] = key.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[parseInt(m, 10) - 1] + ' ' + y;
+}
+
+function buildMonthlyAlloyTrendData(allRows, department, alloys) {
+  if (!allRows || !alloys.length) return { months: [], rateDatasets: [], totalQtyByMonth: {} };
+  const monthSet = new Set();
+  const byAlloyMonth = {};
+  const totalQtyByMonth = {};
+  allRows.forEach(r => {
+    if (r.dept !== department) return;
+    const monthKey = r.date.slice(0, 7); // "yyyy-mm"
+    totalQtyByMonth[monthKey] = (totalQtyByMonth[monthKey] || 0) + r.qty;
+    if (!alloys.includes(r.mat)) return;
+    monthSet.add(monthKey);
+    const key = r.mat + '||' + monthKey;
+    if (!byAlloyMonth[key]) byAlloyMonth[key] = { qty: 0, total: 0 };
+    byAlloyMonth[key].qty += r.qty;
+    byAlloyMonth[key].total += r.total;
+  });
+  const months = Array.from(monthSet).sort();
+  const rateDatasets = alloys.map((alloy, i) => ({
+    label: alloy,
+    data: months.map(m => {
+      const b = byAlloyMonth[alloy + '||' + m];
+      return b && b.qty ? b.total / b.qty : null;
+    }),
+    qty: months.map(m => {
+      const b = byAlloyMonth[alloy + '||' + m];
+      return b ? b.qty : null;
+    }),
+    borderColor: TREND_LINE_COLORS[i % TREND_LINE_COLORS.length],
+    backgroundColor: TREND_LINE_COLORS[i % TREND_LINE_COLORS.length],
+    fill: false, tension: 0.3, pointRadius: 5, spanGaps: true
+  }));
+  return { months, rateDatasets, totalQtyByMonth };
+}
+
+function MonthlyAlloyTrendChart({ allRows, department, alloys }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+
+  const { months, rateDatasets, totalQtyByMonth } = useMemo(
+    () => buildMonthlyAlloyTrendData(allRows, department, alloys),
+    [allRows, department, alloys]
+  );
+
+  useEffect(() => {
+    if (!canvasRef.current || typeof Chart === 'undefined') return;
+    if (chartRef.current) chartRef.current.destroy();
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'line',
+      data: { labels: months.map(monthKeyToLabel), datasets: rateDatasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { boxWidth: 12, boxHeight: 12, font: { size: 11 } } },
+          zoom: ZOOM_PAN_OPTIONS,
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const rate = ctx.parsed.y;
+                const rateText = rate != null ? rate.toFixed(2) + ' Rs/kg' : 'no data';
+                return ctx.dataset.label + ': ' + rateText;
+              },
+              footer: (items) => {
+                if (!items.length) return '';
+                const item = items[0];
+                const qty = item.dataset.qty ? item.dataset.qty[item.dataIndex] : null;
+                return 'Total production: ' + (qty != null ? Math.round(qty).toLocaleString('en-IN') : '0') + ' kg';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { autoSkip: false }, grid: { display: false } },
+          y: { title: { display: true, text: 'Rs / kg' }, grid: { color: '#E7E2D8' }, beginAtZero: true }
+        }
+      }
+    });
+    return () => { if (chartRef.current) chartRef.current.destroy(); };
+  }, [months, rateDatasets, totalQtyByMonth]);
+
+  if (!rateDatasets.length) {
+    return <div style={{ fontSize: 13, color: 'var(--ink-2)', padding: '12px 0' }}>No monthly trend data yet.</div>;
+  }
+  if (months.length < 2) {
+    return (
+      <div>
+        <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 8 }}>
+          Only one month of data uploaded so far ({monthKeyToLabel(months[0])}) — the trend will build up as more months come in.
+        </div>
+        <div style={{ position: 'relative', height: 240 }}>
+          <ChartResetButton chartRef={chartRef} />
+          <canvas ref={canvasRef} role="img" aria-label="Line chart of Rs per kg cost by month, one line per alloy"></canvas>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: 'relative', height: 280 }}>
+      <ChartResetButton chartRef={chartRef} />
+      <canvas ref={canvasRef} role="img" aria-label="Line chart of Rs per kg cost by month, one line per alloy. Hover a point for qty and total production. Scroll to zoom, drag to pan."></canvas>
+    </div>
+  );
+}
+
 function BatchCostChart({ rows, title }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
@@ -891,7 +1261,7 @@ function BatchCostChart({ rows, title }) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: { legend: { display: false }, zoom: ZOOM_PAN_OPTIONS },
         scales: {
           x: { ticks: { autoSkip: rows.length > 25, maxRotation: 45, font: { size: 10 } }, grid: { display: false } },
           y: { title: { display: true, text: 'Rs / kg' }, grid: { color: '#E7E2D8' } }
@@ -908,7 +1278,8 @@ function BatchCostChart({ rows, title }) {
     }}>
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--ink-2)' }}>{title}</div>
       <div style={{ position: 'relative', height: 240 }}>
-        <canvas ref={canvasRef} role="img" aria-label={title + ' — line chart'}></canvas>
+        <ChartResetButton chartRef={chartRef} />
+        <canvas ref={canvasRef} role="img" aria-label={title + ' — line chart. Scroll to zoom, drag to pan.'}></canvas>
       </div>
     </div>
   );
