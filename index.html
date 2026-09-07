@@ -234,6 +234,13 @@ function keyToLabel(key) {
   return d + ' ' + months[parseInt(m, 10) - 1] + ' ' + y;
 }
 
+// groups names that differ only by case or extra whitespace — a common SAP
+// export inconsistency between different days' files — so the same machine
+// or alloy doesn't show up twice under slightly different spellings.
+function normKey(s) {
+  return (s || '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
 function num(v) {
   if (typeof v === 'number') return isFinite(v) ? v : 0;
   const cleaned = String(v == null ? '' : v)
@@ -396,9 +403,9 @@ function aggregateBy(rows, keyFn, nameFn) {
         powerD: 0,
         powerI: 0,
         total: 0,
-        wcs: new Set(),
-        mats: new Set(),
-        matCodes: new Set()
+        wcs: {},      // normKey -> first-seen display text, avoids case/space duplicates
+        mats: {},
+        matCodes: {}
       };
     }
 
@@ -408,20 +415,20 @@ function aggregateBy(rows, keyFn, nameFn) {
     ['qty','storeD','storeI','labD','labI','powerD','powerI','total']
       .forEach(f => b[f] += r[f]);
 
-    if (r.wc) b.wcs.add(r.wc);
-    if (r.mat) b.mats.add(r.mat);
-    if (r.matCode) b.matCodes.add(r.matCode);
+    if (r.wc) { const nk = normKey(r.wc); b.wcs[nk] = nk; }
+    if (r.mat) { const nk = normKey(r.mat); if (!b.mats[nk]) b.mats[nk] = r.mat.trim(); }
+    if (r.matCode) { const nk = normKey(r.matCode); if (!b.matCodes[nk]) b.matCodes[nk] = r.matCode.trim(); }
   });
 
   return Object.values(buckets)
     .map(b => ({
       ...b,
-      wc: Array.from(b.wcs).join(', '),
-      material: Array.from(b.mats).join(', '),
+      wc: Object.values(b.wcs).join(', '),
+      material: Object.values(b.mats).join(', '),
       // Batch view groups by Batch + Material Code, therefore this is
       // normally exactly one code. Keeping a simple string here avoids
       // showing misleading multi-code values for one production row.
-      matCode: Array.from(b.matCodes)[0] || '',
+      matCode: Object.values(b.matCodes)[0] || '',
       rate: b.qty ? b.total / b.qty : 0,
       storeDRate: b.qty ? b.storeD / b.qty : 0,
       storeIRate: b.qty ? b.storeI / b.qty : 0,
@@ -474,7 +481,8 @@ function Chip({ label, onRemove }) {
 function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('bwt-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   const [allRows, setAllRows] = useState(null); // every row, every date — loaded once
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [fromDate, setFromDate] = useState(null);
+  const [toDate, setToDate] = useState(null);
   const [department, setDepartment] = useState('CCP / Mill');
   const [view, setView] = useState('wc');
   const [search, setSearch] = useState('');
@@ -507,7 +515,8 @@ function App() {
       const rows = await getAllRowsRemote();
       setAllRows(rows);
       const dates = Array.from(new Set(rows.map(r => r.date))).sort().reverse();
-      setSelectedDate(prev => (prev && dates.includes(prev)) ? prev : (dates[0] || null));
+      setFromDate(prev => (prev && dates.includes(prev)) ? prev : (dates[0] || null));
+      setToDate(prev => (prev && dates.includes(prev)) ? prev : (dates[0] || null));
     } catch (e) {
       setError('Could not reach the data source. Check your connection and try again.');
     } finally {
@@ -517,11 +526,15 @@ function App() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // rows for just the selected date — pure client-side slice, instant
+  // rows within the selected From–To range — pure client-side slice, instant.
+  // when From and To are the same date (the default), this behaves exactly
+  // like the old single-date selector.
   const rows = useMemo(() => {
-    if (!allRows || !selectedDate) return allRows === null ? null : [];
-    return allRows.filter(r => r.date === selectedDate);
-  }, [allRows, selectedDate]);
+    if (!allRows || !fromDate || !toDate) return allRows === null ? null : [];
+    const lo = fromDate <= toDate ? fromDate : toDate;
+    const hi = fromDate <= toDate ? toDate : fromDate;
+    return allRows.filter(r => r.date >= lo && r.date <= hi);
+  }, [allRows, fromDate, toDate]);
 
   const [uploadProgress, setUploadProgress] = useState(null);
 
@@ -560,7 +573,8 @@ function App() {
 
       if (loadedLabels.length) {
         showToast('Loaded ' + loadedLabels.join(', ') + (failed.length ? ' — ' + failed.length + ' file(s) failed' : ''), failed.length > 0 && !loadedLabels.length);
-        setSelectedDate(newDates[0]);
+        setFromDate(newDates[0]);
+        setToDate(newDates[0]);
       }
       if (failed.length && !loadedLabels.length) {
         showToast(failed.join(' | '), true);
@@ -591,21 +605,45 @@ function App() {
   // the same no matter which single date is picked up top, otherwise every
   // date switch reshuffles which lines appear. This looks across every
   // uploaded date for the department, not just the currently selected one.
+  // groups names that differ only by case or extra whitespace (a common SAP
+  // export inconsistency between different days' files) so they don't show
+  // up as separate, duplicate-looking lines in the trend charts.
+  // using shared normKey() defined near keyToLabel
+
   const allTimeAlloyOptions = useMemo(() => {
     if (!allRows) return [];
     const totals = {};
+    const display = {};
     allRows.forEach(r => {
       if (r.dept !== department || !r.mat) return;
       // dross / scrap / process scrap are recovered by-product materials,
       // not primary alloys — they shouldn't show up as their own trend line
       const nameLower = r.mat.toLowerCase();
       if (nameLower.includes('dross') || nameLower.includes('scrap')) return;
-      totals[r.mat] = (totals[r.mat] || 0) + r.qty;
+      const key = normKey(r.mat);
+      totals[key] = (totals[key] || 0) + r.qty;
+      if (!display[key]) display[key] = r.mat.trim();
     });
     // cap to the top 10 by quantity — this matches the trend chart's color
     // palette size (10 colors) so no two lines ever end up the same color,
     // and it keeps small-volume by-product materials from cluttering the
     // legend when a department accumulates many material codes over time.
+    return Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 10).map(k => display[k]);
+  }, [allRows, department]);
+
+  // same idea as allTimeAlloyOptions, but grouped by work center (machine)
+  // instead of material — for the "by machine" trend chart.
+  const allTimeMachineOptions = useMemo(() => {
+    if (!allRows) return [];
+    const totals = {};
+    allRows.forEach(r => {
+      if (r.dept !== department || !r.wc) return;
+      const key = normKey(r.wc);
+      totals[key] = (totals[key] || 0) + r.qty;
+    });
+    // use the normalized (upper-case, single-spaced) form directly as the
+    // display name too, so every machine shows in one consistent format
+    // regardless of how it was spaced/cased in a given SAP export.
     return Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 10);
   }, [allRows, department]);
 
@@ -614,11 +652,11 @@ function App() {
   }, [hasBatch, view]);
 
   const aggregated = useMemo(() => {
-    if (view === 'wc') return aggregateBy(deptRows, r => r.wc);
+    if (view === 'wc') return aggregateBy(deptRows, r => normKey(r.wc), r => normKey(r.wc));
     if (view === 'alloy') return aggregateBy(
       deptRows,
-      r => (r.mat || 'Unspecified') + '||' + r.wc,
-      r => r.mat || 'Unspecified'
+      r => normKey(r.mat || 'Unspecified') + '||' + normKey(r.wc),
+      r => (r.mat || 'Unspecified').trim()
     );
     if (view === 'batch') {
       // IMPORTANT: a batch can contain multiple material codes.
@@ -660,10 +698,10 @@ function App() {
   const fmtRate = n => n.toFixed(2);
 
   const COLS_AGG = [
-    ['name', view === 'batch' ? 'Batch' : 'Name', 'left'],
+    ['name', view === 'batch' ? 'Batch' : view === 'wc' ? 'Machine' : view === 'alloy' ? 'Material' : 'Name', 'left'],
     ...(view === 'batch' ? [['wc', 'Work center', 'left'], ['matCode', 'Material code', 'left']] : []),
     ...(view === 'alloy' ? [['wc', 'Machine', 'left']] : []),
-    ...(view === 'wc' ? [['count', 'Entries', 'right']] : []),
+    ...(view === 'wc' ? [['count', 'Batch', 'right']] : []),
     ['qty', 'Qty (kg)', 'right'],
     ['storeDRate', 'Store direct (Rs/kg)', 'right'],
     ['storeIRate', 'Store indirect (Rs/kg)', 'right'],
@@ -689,7 +727,7 @@ function App() {
       <main style={{ maxWidth: 1200, margin: '0 auto', padding: '20px 24px 64px' }}>
 
         <FilterBar
-          dateIndex={dateIndex} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
+          dateIndex={dateIndex} fromDate={fromDate} setFromDate={setFromDate} toDate={toDate} setToDate={setToDate}
           department={department} setDepartment={setDepartment}
           view={view} setView={setView} hasBatch={hasBatch}
         />
@@ -714,10 +752,27 @@ function App() {
             padding: '16px 16px 8px', marginBottom: 16
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Cost per kg over time</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Cost per kg over time — by alloy</span>
               <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>(all machines combined, {department} — top 10 alloys by volume — hover a point for qty too)</span>
             </div>
-            <AlloyTrendChart allRows={allRows} department={department} alloys={allTimeAlloyOptions} />
+            <AlloyTrendChart allRows={allRows} department={department} alloys={allTimeAlloyOptions}
+              groupField="mat" fromDate={fromDate} toDate={toDate}
+              ariaLabel="Line chart of Rs per kg cost over time, one line per alloy. Hover a point to see quantity." />
+          </div>
+        )}
+
+        {!loading && !error && view === 'alloy' && allTimeMachineOptions.length > 0 && (
+          <div style={{
+            background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12,
+            padding: '16px 16px 8px', marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Cost per kg over time — by machine</span>
+              <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>(all alloys combined per machine, {department} — top 10 machines by volume — hover a point for qty too)</span>
+            </div>
+            <AlloyTrendChart allRows={allRows} department={department} alloys={allTimeMachineOptions}
+              groupField="wc" fromDate={fromDate} toDate={toDate}
+              ariaLabel="Line chart of Rs per kg cost over time, one line per machine. Hover a point to see quantity." />
           </div>
         )}
 
@@ -845,15 +900,28 @@ function TopBar({ theme, setTheme, search, setSearch, onUploadClick, uploading, 
 /* ============================================================
    FILTER BAR
 ============================================================ */
-function FilterBar({ dateIndex, selectedDate, setSelectedDate, department, setDepartment, view, setView, hasBatch }) {
+function FilterBar({ dateIndex, fromDate, setFromDate, toDate, setToDate, department, setDepartment, view, setView, hasBatch }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, margin: '4px 0 18px' }}>
-      <select value={selectedDate || ''} onChange={e => setSelectedDate(e.target.value)} className="focus-ring"
-        disabled={!dateIndex.length}
-        style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', fontWeight: 500 }}>
-        {dateIndex.length === 0 && <option>No dates yet</option>}
-        {dateIndex.map(d => <option key={d} value={d}>{keyToLabel(d)}</option>)}
-      </select>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ink-2)' }}>
+        From
+        <select value={fromDate || ''} onChange={e => setFromDate(e.target.value)} className="focus-ring"
+          disabled={!dateIndex.length}
+          style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', fontWeight: 500 }}>
+          {dateIndex.length === 0 && <option>No dates yet</option>}
+          {dateIndex.map(d => <option key={d} value={d}>{keyToLabel(d)}</option>)}
+        </select>
+      </label>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ink-2)' }}>
+        To
+        <select value={toDate || ''} onChange={e => setToDate(e.target.value)} className="focus-ring"
+          disabled={!dateIndex.length}
+          style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', fontWeight: 500 }}>
+          {dateIndex.length === 0 && <option>No dates yet</option>}
+          {dateIndex.map(d => <option key={d} value={d}>{keyToLabel(d)}</option>)}
+        </select>
+      </label>
 
       <select value={department} onChange={e => setDepartment(e.target.value)} className="focus-ring"
         style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', fontWeight: 600 }}>
@@ -883,7 +951,7 @@ function FilterBar({ dateIndex, selectedDate, setSelectedDate, department, setDe
 function StatRow({ qty, total, entries, fmt }) {
   const cards = [
     ['Total qty', fmt(qty) + ' kg'],
-    ['Entries', fmt(entries)]
+    ['Total Batch', fmt(entries)]
   ];
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
@@ -963,42 +1031,52 @@ const ZOOM_PAN_OPTIONS = {
   limits: { x: { minRange: 2 } }
 };
 
-function buildAlloyTrendData(allRows, department, alloys) {
-  if (!allRows || !alloys.length) return { dates: [], rateDatasets: [], qtyDatasets: [], totalQtyByDate: {} };
+function buildAlloyTrendData(allRows, department, groupValues, groupField, fromDate, toDate) {
+  groupField = groupField || 'mat';
+  if (!allRows || !groupValues.length) return { dates: [], rateDatasets: [], qtyDatasets: [], totalQtyByDate: {} };
+  // using shared normKey() defined near keyToLabel
+  // map a normalized name back to the canonical display name from groupValues,
+  // so rows whose raw wc/mat differs only by case or extra whitespace still
+  // fold into the same line instead of appearing as a separate duplicate
+  const canonicalByNormKey = {};
+  groupValues.forEach(v => { canonicalByNormKey[normKey(v)] = v; });
   const dateSet = new Set();
-  const byAlloyDate = {};
+  const byGroupDate = {};
   const totalQtyByDate = {};
   allRows.forEach(r => {
     if (r.dept !== department) return;
-    // total production for the date includes every alloy in the department,
-    // not just the ones currently plotted as lines
+    if (fromDate && r.date < fromDate) return;
+    if (toDate && r.date > toDate) return;
+    // total production for the date includes every group value in the
+    // department, not just the ones currently plotted as lines
     totalQtyByDate[r.date] = (totalQtyByDate[r.date] || 0) + r.qty;
-    if (!alloys.includes(r.mat)) return;
+    const canonical = canonicalByNormKey[normKey(r[groupField])];
+    if (!canonical) return;
     dateSet.add(r.date);
-    const key = r.mat + '||' + r.date;
-    if (!byAlloyDate[key]) byAlloyDate[key] = { qty: 0, total: 0 };
-    byAlloyDate[key].qty += r.qty;
-    byAlloyDate[key].total += r.total;
+    const key = canonical + '||' + r.date;
+    if (!byGroupDate[key]) byGroupDate[key] = { qty: 0, total: 0 };
+    byGroupDate[key].qty += r.qty;
+    byGroupDate[key].total += r.total;
   });
   const dates = Array.from(dateSet).sort();
-  const rateDatasets = alloys.map((alloy, i) => ({
-    label: alloy,
+  const rateDatasets = groupValues.map((val, i) => ({
+    label: val,
     data: dates.map(d => {
-      const b = byAlloyDate[alloy + '||' + d];
+      const b = byGroupDate[val + '||' + d];
       return b && b.qty ? b.total / b.qty : null;
     }),
     qty: dates.map(d => {
-      const b = byAlloyDate[alloy + '||' + d];
+      const b = byGroupDate[val + '||' + d];
       return b ? b.qty : null;
     }),
     borderColor: TREND_LINE_COLORS[i % TREND_LINE_COLORS.length],
     backgroundColor: TREND_LINE_COLORS[i % TREND_LINE_COLORS.length],
     fill: false, tension: 0.3, pointRadius: 4, spanGaps: true
   }));
-  const qtyDatasets = alloys.map((alloy, i) => ({
-    label: alloy,
+  const qtyDatasets = groupValues.map((val, i) => ({
+    label: val,
     data: dates.map(d => {
-      const b = byAlloyDate[alloy + '||' + d];
+      const b = byGroupDate[val + '||' + d];
       return b ? b.qty : null;
     }),
     borderColor: TREND_LINE_COLORS[i % TREND_LINE_COLORS.length],
@@ -1008,13 +1086,13 @@ function buildAlloyTrendData(allRows, department, alloys) {
   return { dates, rateDatasets, qtyDatasets, totalQtyByDate };
 }
 
-function AlloyTrendChart({ allRows, department, alloys }) {
+function AlloyTrendChart({ allRows, department, alloys, groupField, fromDate, toDate, ariaLabel }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
 
   const { dates, rateDatasets, totalQtyByDate } = useMemo(
-    () => buildAlloyTrendData(allRows, department, alloys),
-    [allRows, department, alloys]
+    () => buildAlloyTrendData(allRows, department, alloys, groupField, fromDate, toDate),
+    [allRows, department, alloys, groupField, fromDate, toDate]
   );
 
   useEffect(() => {
@@ -1061,7 +1139,7 @@ function AlloyTrendChart({ allRows, department, alloys }) {
   return (
     <div style={{ position: 'relative', height: 280 }}>
       <ChartResetButton chartRef={chartRef} />
-      <canvas ref={canvasRef} role="img" aria-label="Line chart of Rs per kg cost over time, one line per alloy. Hover a point to see quantity. Scroll to zoom, drag to pan."></canvas>
+      <canvas ref={canvasRef} role="img" aria-label={ariaLabel || "Line chart of Rs per kg cost over time. Hover a point to see quantity. Scroll to zoom, drag to pan."}></canvas>
     </div>
   );
 }
