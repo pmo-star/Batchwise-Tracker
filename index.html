@@ -575,6 +575,20 @@ function App() {
   const deptRows = useMemo(() => (rows || []).filter(r => r.dept === department), [rows, department]);
   const hasBatch = useMemo(() => deptRows.some(r => r.batch), [deptRows]);
 
+  // machine names available right now (current department + date range),
+  // used to populate the Machine filter dropdown next to the view tabs
+  const machineOptions = useMemo(() => {
+    const totals = {};
+    const display = {};
+    deptRows.forEach(r => {
+      if (!r.wc) return;
+      const key = normKey(r.wc);
+      totals[key] = (totals[key] || 0) + r.qty;
+      if (!display[key]) display[key] = normKey(r.wc);
+    });
+    return Object.keys(totals).sort((a, b) => totals[b] - totals[a]).map(k => display[k]);
+  }, [deptRows]);
+
   const alloyOptions = useMemo(() => {
     const totals = {};
     deptRows.forEach(r => {
@@ -617,6 +631,19 @@ function App() {
       if (r.dept !== department || !r.wc) return;
       const key = normKey(r.wc);
       totals[key] = (totals[key] || 0) + r.qty;
+    });
+    return Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 10);
+  }, [searchedAllRows, department]);
+
+  // top batches by volume, for the Batch tab's trend chart — batches
+  // usually run on a single date, so most lines will show just one point,
+  // but this still lets a batch that spans multiple postings be compared.
+  const allTimeBatchOptions = useMemo(() => {
+    if (!searchedAllRows) return [];
+    const totals = {};
+    searchedAllRows.forEach(r => {
+      if (r.dept !== department || !r.batch) return;
+      totals[r.batch] = (totals[r.batch] || 0) + r.qty;
     });
     return Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 10);
   }, [searchedAllRows, department]);
@@ -765,6 +792,7 @@ function App() {
           dateIndex={dateIndex} fromDate={fromDate} setFromDate={setFromDate} toDate={toDate} setToDate={setToDate}
           department={department} setDepartment={setDepartment}
           view={view} setView={setView} hasBatch={hasBatch}
+          machineOptions={machineOptions} search={search} setSearch={setSearch}
         />
 
         {activeFilters.length > 0 && (
@@ -808,6 +836,21 @@ function App() {
             <AlloyTrendChart allRows={searchedAllRows} department={department} alloys={allTimeMachineOptions}
               groupField="wc" fromDate={fromDate} toDate={toDate}
               ariaLabel="Line chart of Rs per kg cost over time, one line per machine. Hover a point to see quantity." />
+          </div>
+        )}
+
+        {!loading && !error && view === 'batch' && allTimeBatchOptions.length > 0 && (
+          <div style={{
+            background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12,
+            padding: '16px 16px 8px', marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Cost per kg over time — by batch</span>
+              <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>({department} — top 10 batches by volume — most batches run on a single date, so many lines will show just one point — hover for qty too)</span>
+            </div>
+            <AlloyTrendChart allRows={searchedAllRows} department={department} alloys={allTimeBatchOptions}
+              groupField="batch" fromDate={fromDate} toDate={toDate}
+              ariaLabel="Line chart of Rs per kg cost over time, one line per batch. Hover a point to see quantity." />
           </div>
         )}
 
@@ -1032,7 +1075,7 @@ function DateRangeCalendarPicker({ dateIndex, fromDate, setFromDate, toDate, set
   );
 }
 
-function FilterBar({ dateIndex, fromDate, setFromDate, toDate, setToDate, department, setDepartment, view, setView, hasBatch }) {
+function FilterBar({ dateIndex, fromDate, setFromDate, toDate, setToDate, department, setDepartment, view, setView, hasBatch, machineOptions, search, setSearch }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, margin: '4px 0 18px' }}>
       <DateRangeCalendarPicker
@@ -1057,6 +1100,18 @@ function FilterBar({ dateIndex, fromDate, setFromDate, toDate, setToDate, depart
           );
         })}
       </div>
+
+      {machineOptions && machineOptions.length > 0 && (
+        <select
+          value={machineOptions.includes(search) ? search : ''}
+          onChange={e => setSearch(e.target.value)}
+          className="focus-ring"
+          style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)', fontWeight: 600 }}
+        >
+          <option value="">All machines</option>
+          {machineOptions.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+      )}
     </div>
   );
 }
