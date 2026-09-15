@@ -635,19 +635,6 @@ function App() {
     return Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 10);
   }, [searchedAllRows, department]);
 
-  // top batches by volume, for the Batch tab's trend chart — batches
-  // usually run on a single date, so most lines will show just one point,
-  // but this still lets a batch that spans multiple postings be compared.
-  const allTimeBatchOptions = useMemo(() => {
-    if (!searchedAllRows) return [];
-    const totals = {};
-    searchedAllRows.forEach(r => {
-      if (r.dept !== department || !r.batch) return;
-      totals[r.batch] = (totals[r.batch] || 0) + r.qty;
-    });
-    return Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 10);
-  }, [searchedAllRows, department]);
-
   useEffect(() => {
     if (view === 'batch' && !hasBatch) setView('wc');
   }, [hasBatch, view]);
@@ -839,18 +826,16 @@ function App() {
           </div>
         )}
 
-        {!loading && !error && view === 'batch' && allTimeBatchOptions.length > 0 && (
+        {!loading && !error && view === 'batch' && sortedFiltered.length > 0 && (
           <div style={{
             background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12,
             padding: '16px 16px 8px', marginBottom: 16
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Cost per kg over time — by batch</span>
-              <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>({department} — top 10 batches by volume — most batches run on a single date, so many lines will show just one point — hover for qty too)</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-2)' }}>Cost per kg by batch</span>
+              <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>({department}, this selection — top 25 shown, hover a bar for qty)</span>
             </div>
-            <AlloyTrendChart allRows={searchedAllRows} department={department} alloys={allTimeBatchOptions}
-              groupField="batch" fromDate={fromDate} toDate={toDate}
-              ariaLabel="Line chart of Rs per kg cost over time, one line per batch. Hover a point to see quantity." />
+            <BatchRateBarChart rows={sortedFiltered} />
           </div>
         )}
 
@@ -1290,6 +1275,62 @@ function AlloyTrendChart({ allRows, department, alloys, groupField, fromDate, to
       <div style={{ position: 'relative', height: 280 }}>
         <canvas ref={canvasRef} role="img" aria-label={ariaLabel || "Line chart of Rs per kg cost over time. Hover a point to see quantity."}></canvas>
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   BATCH RATE BAR CHART (vertical bar: Batch on X axis,
+   Rs/kg on Y axis, for the current selection)
+============================================================ */
+function BatchRateBarChart({ rows }) {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+  // cap so the chart stays readable — the table below already shows every row
+  const capped = useMemo(() => rows.slice(0, 25), [rows]);
+
+  useEffect(() => {
+    if (!canvasRef.current || typeof Chart === 'undefined') return;
+    if (chartRef.current) chartRef.current.destroy();
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'bar',
+      data: {
+        labels: capped.map(r => r.name),
+        datasets: [{
+          data: capped.map(r => r.rate),
+          backgroundColor: '#B54E2E',
+          borderRadius: 4,
+          barThickness: 20
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ctx.parsed.y.toFixed(2) + ' Rs/kg',
+              afterLabel: ctx => Math.round(capped[ctx.dataIndex].qty).toLocaleString('en-IN') + ' kg'
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 45, autoSkip: false } },
+          y: { title: { display: true, text: 'Rs / kg' }, beginAtZero: true, grid: { color: '#E7E2D8' } }
+        }
+      }
+    });
+    return () => { if (chartRef.current) chartRef.current.destroy(); };
+  }, [capped]);
+
+  if (!capped.length) {
+    return <div style={{ fontSize: 13, color: 'var(--ink-2)', padding: '12px 0' }}>No batch data yet.</div>;
+  }
+
+  return (
+    <div style={{ position: 'relative', height: 320 }}>
+      <canvas ref={canvasRef} role="img" aria-label="Bar chart of Rs per kg cost, one bar per batch. Batch numbers on the X axis, Rs per kg on the Y axis."></canvas>
     </div>
   );
 }
