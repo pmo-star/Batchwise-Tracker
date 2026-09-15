@@ -732,7 +732,7 @@ function App() {
   const COLS_AGG = [
     ['date', 'Date', 'left'],
     ['name', view === 'batch' ? 'Batch' : view === 'wc' ? 'Machine' : view === 'alloy' ? 'Material' : 'Name', 'left'],
-    ...(view === 'batch' ? [['wc', 'Work center', 'left'], ['matCode', 'Material code', 'left']] : []),
+    ...(view === 'batch' ? [['wc', 'Machine', 'left'], ['matCode', 'Material code', 'left']] : []),
     ...(view === 'alloy' ? [['wc', 'Machine', 'left']] : []),
     ...(view === 'wc' ? [['count', 'Batch', 'right']] : []),
     ['qty', 'Qty (kg)', 'right'],
@@ -1045,7 +1045,7 @@ function FilterBar({ dateIndex, fromDate, setFromDate, toDate, setToDate, depart
       </select>
 
       <div style={{ display: 'flex', gap: 4, background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 8, padding: 3 }}>
-        {[['wc', 'Work center'], ['alloy', 'Alloy'], ['batch', 'Batch']].map(([k, label]) => {
+        {[['wc', 'Machine wise'], ['alloy', 'Alloy'], ['batch', 'Batch']].map(([k, label]) => {
           const disabled = k === 'batch' && !hasBatch;
           return (
             <button key={k} onClick={() => !disabled && setView(k)} disabled={disabled} className="focus-ring" style={{
