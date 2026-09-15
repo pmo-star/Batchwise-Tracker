@@ -589,16 +589,20 @@ function App() {
     return Object.keys(totals).sort((a, b) => totals[b] - totals[a]).map(k => display[k]);
   }, [deptRows]);
 
-  // batch numbers available right now (current department + date range),
-  // used to populate the Batch filter dropdown next to the view tabs
+  // batch numbers available right now (current department + date range) —
+  // narrowed to the currently selected machine, if one is picked in the
+  // Machine dropdown, so the Batch list only shows batches that actually
+  // ran on that machine instead of every batch in the department.
   const batchOptions = useMemo(() => {
+    const selectedMachine = machineOptions.includes(search) ? normKey(search) : null;
     const totals = {};
     deptRows.forEach(r => {
       if (!r.batch) return;
+      if (selectedMachine && normKey(r.wc) !== selectedMachine) return;
       totals[r.batch] = (totals[r.batch] || 0) + r.qty;
     });
     return Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
-  }, [deptRows]);
+  }, [deptRows, machineOptions, search]);
 
   const alloyOptions = useMemo(() => {
     const totals = {};
@@ -654,6 +658,12 @@ function App() {
     setSortKey(null);
     setSortDir('desc');
   }, [view]);
+
+  // a machine/alloy/batch picked in one department won't exist in another,
+  // so switching departments clears whatever filter was active
+  useEffect(() => {
+    setSearch('');
+  }, [department]);
 
   const aggregated = useMemo(() => {
     if (view === 'wc') return aggregateBy(deptRows, r => r.date + '||' + normKey(r.wc), r => normKey(r.wc));
